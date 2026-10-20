@@ -68,3 +68,7 @@ Releases use `vMAJOR.MINOR.PATCH` tags. After a tag is pushed, `.github/workflow
 - `keynest-windows-amd64.exe` and `keynest-windows-amd64.exe.sha256`
 
 Local `wails dev` and standard `wails build` runs are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.
+
+## License
+
+KeyNest is licensed under the [MIT License](LICENSE).

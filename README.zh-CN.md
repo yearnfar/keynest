@@ -68,3 +68,7 @@ macOS 用户应下载 `KeyNest-macOS-arm64.dmg`，打开后将 `KeyNest.app` 拖
 - `keynest-windows-amd64.exe` 与 `keynest-windows-amd64.exe.sha256`
 
 本地 `wails dev` 和普通 `wails build` 属于开发构建，可以检查远程版本，但不会覆盖自身。`make release` 和发布工作流会从当前提交最近的 `vMAJOR.MINOR.PATCH` Git 标签读取版本，去掉 `v` 后写入应用界面、Go 二进制以及 macOS/Windows 包元数据，并通过链接参数写入 `BuildMode=production`，从而启用自动安装。
+
+## 开源许可
+
+KeyNest 采用 [MIT License](LICENSE) 许可证。
