@@ -1,61 +1,70 @@
 # KeyNest
 
-Free cross-platform password manager compatible with KeePass。
+English | [简体中文](README.zh-CN.md)
 
-## 软件预览
+Free cross-platform password manager compatible with KeePass.
 
-![KeyNest 软件预览](docs/images/keynest-preview.png)
+## Preview
 
-## 数据存储
+![KeyNest preview](docs/images/keynest-preview.png)
 
-- 密码库使用兼容 KeePass 的 KDBX 4.1 格式。
-- KDBX 文件由用户选择位置并保存在本机，不上传到云端。
-- 支持主密码、密钥文件，或二者组合解锁。
-- 主密码不会持久化；最近使用列表只记录 KDBX 文件路径。
-- 新建和编辑条目时会加密并原子写回当前 KDBX 文件。
-- 内置基于系统加密随机源的随机、易读和 PIN 密码生成器。
+## Features
 
-## 开发
+- Stores vault data locally using the KeePass-compatible KDBX 4.1 format.
+- Supports a master password, a key file, or both, including master password changes.
+- Supports creating, editing, duplicating, favoriting, searching, and viewing entry history, with a built-in password generator.
+- Supports nested groups and drag-and-drop organization of groups and entries.
+- Supports automatic locking and trash recovery, with deleted entries retained for 30 days.
+
+## Data Storage
+
+- Vaults use the KeePass-compatible KDBX 4.1 format.
+- KDBX files are stored locally at a location selected by the user and are never uploaded to the cloud.
+- Vaults can be unlocked with a master password, a key file, or both.
+- Master passwords are never persisted; the recent vault list stores only local KDBX file paths.
+- New and edited entries are encrypted and written atomically to the current KDBX file.
+- The built-in random, memorable, and PIN generators use the system's cryptographically secure random source.
+
+## Development
 
 ```bash
 make dev
 ```
 
-需要更详细的调试日志时使用 `make debug`；生成带调试工具的应用包使用
-`make build-debug`。
+Use `make debug` for more detailed logs, or `make build-debug` to create an application bundle with debugging tools enabled.
 
-仅预览前端界面：
+To preview only the frontend:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-## 验证与构建
+## Testing and Building
 
 ```bash
 make test
 make release
 ```
 
-macOS 应用构建到 `build/bin/KeyNest.app`。
+The macOS application is built at `build/bin/KeyNest.app`.
 
-可通过 `BUILD_FLAGS` 传递额外的 Wails 构建参数，例如：
+Additional Wails build arguments can be passed through `BUILD_FLAGS`, for example:
 
 ```bash
 make release BUILD_FLAGS="-platform windows/amd64"
 ```
 
-## 版本更新
+## Updates
 
-macOS 用户应下载 `KeyNest-macOS-arm64.dmg`，打开后将 `KeyNest.app` 拖入“应用程序”文件夹。当前 macOS 安装包适用于 Apple Silicon。
+macOS users should download `KeyNest-macOS-arm64.dmg`, open it, and drag `KeyNest.app` into the Applications folder. The current macOS package supports Apple Silicon.
 
-正式构建会在“设置 → 关于与更新”中检查 GitHub Releases。自动更新仅接受与当前平台匹配的原始可执行文件，并在替换前验证同一 Release 中的 SHA-256 文件。原始可执行文件是自动更新载荷，不用于手动安装。
+Production builds check GitHub Releases from **Settings → About & Updates**. Automatic updates accept only the raw executable matching the current platform and verify its SHA-256 file from the same release before replacing the application. Raw executables are update payloads and are not intended for manual installation.
 
-发布版本使用 `vMAJOR.MINOR.PATCH` 标签。推送标签后，`.github/workflows/release.yml` 会创建 Release 并上传以下文件：
+Releases use `vMAJOR.MINOR.PATCH` tags. After a tag is pushed, `.github/workflows/release.yml` creates a release and uploads:
 
-- `KeyNest-macOS-arm64.dmg` 与 `KeyNest-macOS-arm64.dmg.sha256`（macOS 用户安装包）
-- `keynest-darwin-arm64` 与 `keynest-darwin-arm64.sha256`
-- `keynest-windows-amd64.exe` 与 `keynest-windows-amd64.exe.sha256`
+- `KeyNest-macOS-arm64.dmg` and `KeyNest-macOS-arm64.dmg.sha256` (macOS installer)
+- `keynest-darwin-arm64` and `keynest-darwin-arm64.sha256`
+- `keynest-windows-amd64.exe` and `keynest-windows-amd64.exe.sha256`
 
-本地 `wails dev` 和普通 `wails build` 属于开发构建，可以检查远程版本，但不会覆盖自身。`make release` 和发布工作流会从当前提交最近的 `vMAJOR.MINOR.PATCH` Git 标签读取版本，去掉 `v` 后写入应用界面、Go 二进制以及 macOS/Windows 包元数据，并通过链接参数写入 `BuildMode=production`，从而启用自动安装。
+Local `wails dev` and standard `wails build` runs are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.
