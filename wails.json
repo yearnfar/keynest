@@ -1,0 +1,26 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "KeyNest",
+  "outputfilename": "keynest",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "info": {
+    "productName": "KeyNest",
+    "productVersion": "0.1.0",
+    "fileAssociations": [
+      {
+        "ext": "kdbx",
+        "name": "KeePass Database",
+        "description": "KeePass KDBX database",
+        "iconName": "appicon",
+        "role": "Editor"
+      }
+    ]
+  },
+  "author": {
+    "name": "yearnfar",
+    "email": "yearnfar@gmail.com"
+  }
+}

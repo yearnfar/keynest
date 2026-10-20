@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: darwin/arm64
+            asset: keynest-darwin-arm64
+          - runner: windows-latest
+            platform: windows/amd64
+            asset: keynest-windows-amd64.exe
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+          echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build release binary
+        shell: bash
+        run: node scripts/build-release.mjs -clean -platform "${{ matrix.platform }}"
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          if [[ "${{ matrix.platform }}" == darwin/* ]]; then
+            APP_BUNDLE="$(find build/bin -maxdepth 1 -type d -name '*.app' | head -n 1)"
+            test -n "${APP_BUNDLE}" && test -d "${APP_BUNDLE}"
+
+            BINARY="$(find "${APP_BUNDLE}/Contents/MacOS" -type f | head -n 1)"
+
+            DMG_ROOT="$(mktemp -d)"
+            ditto "${APP_BUNDLE}" "${DMG_ROOT}/KeyNest.app"
+            ln -s /Applications "${DMG_ROOT}/Applications"
+            hdiutil create \
+              -volname "KeyNest" \
+              -srcfolder "${DMG_ROOT}" \
+              -ov \
+              -format UDZO \
+              "release-assets/KeyNest-macOS-arm64.dmg"
+          else
+            BINARY="build/bin/keynest.exe"
+          fi
+          test -n "${BINARY}" && test -f "${BINARY}"
+          cp "${BINARY}" "release-assets/${{ matrix.asset }}"
+
+          for ASSET_PATH in release-assets/*; do
+            ASSET_NAME="$(basename "${ASSET_PATH}")"
+            if command -v shasum >/dev/null 2>&1; then
+              (cd release-assets && shasum -a 256 "${ASSET_NAME}" > "${ASSET_NAME}.sha256")
+            else
+              (cd release-assets && sha256sum "${ASSET_NAME}" > "${ASSET_NAME}.sha256")
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-assets/* --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-assets/* --repo "${GITHUB_REPOSITORY}" --generate-notes --title "KeyNest ${GITHUB_REF_NAME}"
+          fi
