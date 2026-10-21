@@ -93,7 +93,7 @@ const zhCN = {
     'settings.zhCN': '简体中文',
     'settings.english': 'English',
     'settings.autoLock': '自动锁定',
-    'settings.autoLockDescription': '保险库无操作达到所选时长后自动锁定。',
+    'settings.autoLockDescription': '保险库无操作达到所选时长，或电脑锁屏、休眠时自动锁定。',
     'settings.minute': '分钟',
     'settings.minutes': '分钟',
     'settings.masterPassword': '主密码',

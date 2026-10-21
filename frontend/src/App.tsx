@@ -33,7 +33,7 @@ import {
 import './App.css';
 import Launcher, { VaultSnapshot } from './Launcher';
 import { ChangePassword, CreateGroup, DeleteGroup, DeleteRecycleBinEntry, EmptyRecycleBin, GetEntryHistory, LockDatabase, MoveEntryToRecycleBin, MoveGroup, RestoreRecycleBinEntry, SaveEntry, TouchEntry, UpdateGroup } from '../wailsjs/go/main/App';
-import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
 import PasswordGenerator, { calculatePasswordStrength, generateDefaultPassword, passwordStrengthMessageKey } from './PasswordGenerator';
 import UpdateSettings from './UpdateSettings';
 import { DEFAULT_GROUP_ICON_ID, KeePassGroupIcon, keepassGroupIcons } from './KeePassGroupIcon';
@@ -99,6 +99,7 @@ const UNGROUPED_DROP_TARGET = '__keynest-ungrouped__';
 const RECYCLE_RETENTION_DAYS = 30;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const AUTO_LOCK_STORAGE_KEY = 'keynest.autoLockMinutes';
+const SYSTEM_LOCK_EVENT = 'keynest:system-lock';
 const AUTO_LOCK_OPTIONS = [1, 5, 15, 30] as const;
 type AutoLockMinutes = typeof AUTO_LOCK_OPTIONS[number];
 
@@ -833,7 +834,23 @@ function App() {
 
     const lockVault = async () => {
         cancelItemEditing();
-        if (!demoMode && (window as Window & { go?: unknown }).go) await LockDatabase();
+        const backendLock = !demoMode && (window as Window & { go?: unknown }).go
+            ? LockDatabase()
+            : Promise.resolve();
+        historyRequestRef.current += 1;
+        setItems([]);
+        setGroups([]);
+        setSelectedId('');
+        setVaultName('');
+        setVaultPath('');
+        setDraftPassword('');
+        setDraftEntryID(null);
+        setDemoHistories({});
+        setHistoryVersions([]);
+        setHistoryError('');
+        setHistoryIndex(0);
+        setHistoryLoading(false);
+        setShowHistoryPassword(false);
         setVaultOpen(false);
         setShowPassword(false);
         setEditing(false);
@@ -851,8 +868,17 @@ function App() {
         setChangePasswordOpen(false);
         setVisibleMasterPasswordField(null);
         setCollapsedGroupIDs(new Set());
+        await backendLock;
     };
     lockVaultRef.current = lockVault;
+
+    useEffect(() => {
+        if (!(window as Window & { runtime?: unknown }).runtime) return;
+        return EventsOn(SYSTEM_LOCK_EVENT, () => {
+            const lock = lockVaultRef.current;
+            if (lock) void lock().catch(() => {});
+        });
+    }, []);
 
     useEffect(() => {
         localStorage.setItem(AUTO_LOCK_STORAGE_KEY, String(autoLockMinutes));

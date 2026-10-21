@@ -42,7 +42,7 @@ const en: Record<keyof typeof zhCN, string> = {
     'settings.application': 'Application', 'settings.general': 'General', 'settings.about': 'About', 'settings.vault': 'Vault',
     'settings.security': 'Security', 'settings.language': 'Language', 'settings.languageDescription': 'Choose the display language for KeyNest.',
     'settings.zhCN': '简体中文', 'settings.english': 'English', 'settings.autoLock': 'Auto-lock',
-    'settings.autoLockDescription': 'Lock the vault after the selected period without activity.', 'settings.minute': 'minute', 'settings.minutes': 'minutes',
+    'settings.autoLockDescription': 'Lock after the selected idle period, or whenever the computer locks or sleeps.', 'settings.minute': 'minute', 'settings.minutes': 'minutes',
     'settings.masterPassword': 'Master password',
     'settings.masterPasswordDescription': 'Change the master password used to unlock “{name}”.', 'settings.modify': 'Change',
     'settings.demoData': 'Demo data', 'settings.savedLocal': 'Saved to local KDBX',

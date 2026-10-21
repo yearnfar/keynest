@@ -11,10 +11,13 @@ import (
 )
 
 type App struct {
-	ctx     context.Context
-	vault   *keynest.Service
-	updates *updater.Service
+	ctx                   context.Context
+	vault                 *keynest.Service
+	updates               *updater.Service
+	stopSystemLockMonitor func()
 }
+
+const systemLockEvent = "keynest:system-lock"
 
 type RecentDatabase struct {
 	Name     string `json:"name"`
@@ -102,6 +105,22 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.stopSystemLockMonitor = startSystemLockMonitor(a.handleSystemLock)
+}
+
+func (a *App) shutdown(context.Context) {
+	if a.stopSystemLockMonitor != nil {
+		a.stopSystemLockMonitor()
+		a.stopSystemLockMonitor = nil
+	}
+	a.vault.Lock()
+}
+
+func (a *App) handleSystemLock() {
+	a.vault.Lock()
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, systemLockEvent)
+	}
 }
 
 func (a *App) ChooseDatabase() (string, error) {

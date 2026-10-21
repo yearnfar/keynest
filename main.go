@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist
@@ -27,6 +28,11 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 244, G: 246, B: 245, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
+		Windows: &windows.Options{
+			OnSuspend: app.handleSystemLock,
+			OnResume:  app.handleSystemLock,
+		},
 		Bind: []any{
 			app,
 		},

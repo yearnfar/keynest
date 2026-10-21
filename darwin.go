@@ -3,6 +3,6 @@
 package main
 
 /*
-#cgo LDFLAGS: -framework UniformTypeIdentifiers
+#cgo LDFLAGS: -framework UniformTypeIdentifiers -framework AppKit
 */
 import "C"
