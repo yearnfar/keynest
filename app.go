@@ -23,26 +23,56 @@ type RecentDatabase struct {
 }
 
 type VaultEntry struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Username     string   `json:"username"`
-	Password     string   `json:"password"`
-	URL          string   `json:"url"`
-	Note         string   `json:"note"`
-	GroupID      string   `json:"groupId"`
-	Folder       string   `json:"folder"`
-	Category     string   `json:"category"`
-	Favorite     bool     `json:"favorite"`
-	Modified     string   `json:"modified"`
-	CreatedAt    string   `json:"createdAt"`
-	ModifiedAt   string   `json:"modifiedAt"`
-	LastUsedAt   string   `json:"lastUsedAt"`
-	Color        string   `json:"color"`
-	Initials     string   `json:"initials"`
-	Tags         []string `json:"tags"`
-	Trashed      bool     `json:"trashed"`
-	DeletedAt    string   `json:"deletedAt,omitempty"`
-	HistoryCount int      `json:"historyCount"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Username        string            `json:"username"`
+	Password        string            `json:"password"`
+	URL             string            `json:"url"`
+	Note            string            `json:"note"`
+	GroupID         string            `json:"groupId"`
+	Folder          string            `json:"folder"`
+	Category        string            `json:"category"`
+	Favorite        bool              `json:"favorite"`
+	Modified        string            `json:"modified"`
+	CreatedAt       string            `json:"createdAt"`
+	ModifiedAt      string            `json:"modifiedAt"`
+	LastUsedAt      string            `json:"lastUsedAt"`
+	Color           string            `json:"color"`
+	Initials        string            `json:"initials"`
+	Tags            []string          `json:"tags"`
+	Trashed         bool              `json:"trashed"`
+	DeletedAt       string            `json:"deletedAt,omitempty"`
+	HistoryCount    int               `json:"historyCount"`
+	TemplateID      string            `json:"templateId"`
+	TemplateVersion int               `json:"templateVersion"`
+	Fields          []VaultEntryField `json:"fields"`
+}
+
+type VaultEntryField struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Protected bool   `json:"protected"`
+}
+
+type VaultTemplateField struct {
+	ID         string `json:"id"`
+	StorageKey string `json:"storageKey"`
+	Label      string `json:"label"`
+	Type       string `json:"type"`
+	Section    string `json:"section"`
+	Required   bool   `json:"required"`
+	Protected  bool   `json:"protected"`
+	Searchable bool   `json:"searchable"`
+}
+
+type VaultEntryTemplate struct {
+	ID      string               `json:"id"`
+	Version int                  `json:"version"`
+	Name    string               `json:"name"`
+	BuiltIn bool                 `json:"builtIn"`
+	Enabled bool                 `json:"enabled"`
+	Deleted bool                 `json:"deleted"`
+	Fields  []VaultTemplateField `json:"fields"`
 }
 
 type VaultGroup struct {
@@ -54,10 +84,11 @@ type VaultGroup struct {
 }
 
 type VaultSnapshot struct {
-	Name    string       `json:"name"`
-	Path    string       `json:"path"`
-	Entries []VaultEntry `json:"entries"`
-	Groups  []VaultGroup `json:"groups"`
+	Name      string               `json:"name"`
+	Path      string               `json:"path"`
+	Entries   []VaultEntry         `json:"entries"`
+	Groups    []VaultGroup         `json:"groups"`
+	Templates []VaultEntryTemplate `json:"templates"`
 }
 
 type CreateDatabaseRequest struct {
@@ -67,17 +98,20 @@ type CreateDatabaseRequest struct {
 }
 
 type SaveEntryRequest struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	URL      string   `json:"url"`
-	Note     string   `json:"note"`
-	GroupID  string   `json:"groupId"`
-	Folder   string   `json:"folder"`
-	Category string   `json:"category"`
-	Favorite bool     `json:"favorite"`
-	Tags     []string `json:"tags"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Username        string            `json:"username"`
+	Password        string            `json:"password"`
+	URL             string            `json:"url"`
+	Note            string            `json:"note"`
+	GroupID         string            `json:"groupId"`
+	Folder          string            `json:"folder"`
+	Category        string            `json:"category"`
+	Favorite        bool              `json:"favorite"`
+	Tags            []string          `json:"tags"`
+	TemplateID      string            `json:"templateId"`
+	TemplateVersion int               `json:"templateVersion"`
+	Fields          []VaultEntryField `json:"fields"`
 }
 
 type SaveEntryResult struct {
@@ -170,16 +204,68 @@ func (a *App) CreateDatabase(request CreateDatabaseRequest) (VaultSnapshot, erro
 }
 
 func (a *App) SaveEntry(request SaveEntryRequest) (SaveEntryResult, error) {
+	var fields []keynest.EntryField
+	if request.Fields != nil {
+		fields = make([]keynest.EntryField, len(request.Fields))
+		for i, field := range request.Fields {
+			fields[i] = keynest.EntryField{Key: field.Key, Value: field.Value, Protected: field.Protected}
+		}
+	}
 	result, err := a.vault.SaveEntry(keynest.SaveEntryRequest{
 		ID: request.ID, Name: request.Name, Username: request.Username,
 		Password: request.Password, URL: request.URL, Note: request.Note,
 		GroupID: request.GroupID, Folder: request.Folder, Category: request.Category,
-		Favorite: request.Favorite, Tags: request.Tags,
+		Favorite: request.Favorite, Tags: request.Tags, TemplateID: request.TemplateID,
+		TemplateVersion: request.TemplateVersion, Fields: fields,
 	})
 	if err != nil {
 		return SaveEntryResult{}, err
 	}
 	return SaveEntryResult{Entry: toVaultEntry(result.Entry)}, nil
+}
+
+func (a *App) SaveEntryTemplate(template VaultEntryTemplate) (VaultEntryTemplate, error) {
+	saved, err := a.vault.SaveTemplate(toEntryTemplate(template))
+	if err != nil {
+		return VaultEntryTemplate{}, err
+	}
+	return toVaultEntryTemplate(saved), nil
+}
+
+func (a *App) DeleteEntryTemplate(id string) ([]VaultEntryTemplate, error) {
+	templates, err := a.vault.DeleteTemplate(id)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]VaultEntryTemplate, len(templates))
+	for i, template := range templates {
+		result[i] = toVaultEntryTemplate(template)
+	}
+	return result, nil
+}
+
+func (a *App) ReorderEntryTemplates(ids []string) ([]VaultEntryTemplate, error) {
+	templates, err := a.vault.ReorderTemplates(ids)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]VaultEntryTemplate, len(templates))
+	for i, template := range templates {
+		result[i] = toVaultEntryTemplate(template)
+	}
+	return result, nil
+}
+
+func (a *App) SetEntryTemplateEnabled(id string, enabled bool) ([]VaultEntryTemplate, error) {
+	templates, err := a.vault.SetTemplateEnabled(id, enabled)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]VaultEntryTemplate, len(templates))
+	for i, template := range templates {
+		result[i] = toVaultEntryTemplate(template)
+	}
+	return result, nil
 }
 
 func (a *App) GetEntryHistory(id string) ([]VaultEntry, error) {
@@ -297,10 +383,18 @@ func toVaultSnapshot(snapshot keynest.Snapshot) VaultSnapshot {
 	for i, group := range snapshot.Groups {
 		groups[i] = toVaultGroup(group)
 	}
-	return VaultSnapshot{Name: snapshot.Name, Path: snapshot.Path, Entries: entries, Groups: groups}
+	templates := make([]VaultEntryTemplate, len(snapshot.Templates))
+	for i, template := range snapshot.Templates {
+		templates[i] = toVaultEntryTemplate(template)
+	}
+	return VaultSnapshot{Name: snapshot.Name, Path: snapshot.Path, Entries: entries, Groups: groups, Templates: templates}
 }
 
 func toVaultEntry(entry keynest.Entry) VaultEntry {
+	fields := make([]VaultEntryField, len(entry.Fields))
+	for i, field := range entry.Fields {
+		fields[i] = VaultEntryField{Key: field.Key, Value: field.Value, Protected: field.Protected}
+	}
 	return VaultEntry{
 		ID: entry.ID, Name: entry.Name, Username: entry.Username,
 		Password: entry.Password, URL: entry.URL, Note: entry.Note, GroupID: entry.GroupID,
@@ -309,7 +403,30 @@ func toVaultEntry(entry keynest.Entry) VaultEntry {
 		LastUsedAt: entry.LastUsedAt, Color: entry.Color, Initials: entry.Initials,
 		Tags: entry.Tags, Trashed: entry.Trashed, DeletedAt: entry.DeletedAt,
 		HistoryCount: entry.HistoryCount,
+		TemplateID:   entry.TemplateID, TemplateVersion: entry.TemplateVersion, Fields: fields,
 	}
+}
+
+func toVaultEntryTemplate(template keynest.EntryTemplate) VaultEntryTemplate {
+	fields := make([]VaultTemplateField, len(template.Fields))
+	for i, field := range template.Fields {
+		fields[i] = VaultTemplateField{
+			ID: field.ID, StorageKey: field.StorageKey, Label: field.Label, Type: field.Type,
+			Section: field.Section, Required: field.Required, Protected: field.Protected, Searchable: field.Searchable,
+		}
+	}
+	return VaultEntryTemplate{ID: template.ID, Version: template.Version, Name: template.Name, BuiltIn: template.BuiltIn, Enabled: template.Enabled, Deleted: template.Deleted, Fields: fields}
+}
+
+func toEntryTemplate(template VaultEntryTemplate) keynest.EntryTemplate {
+	fields := make([]keynest.TemplateField, len(template.Fields))
+	for i, field := range template.Fields {
+		fields[i] = keynest.TemplateField{
+			ID: field.ID, StorageKey: field.StorageKey, Label: field.Label, Type: field.Type,
+			Section: field.Section, Required: field.Required, Protected: field.Protected, Searchable: field.Searchable,
+		}
+	}
+	return keynest.EntryTemplate{ID: template.ID, Version: template.Version, Name: template.Name, BuiltIn: template.BuiltIn, Enabled: template.Enabled, Deleted: template.Deleted, Fields: fields}
 }
 
 func toVaultGroup(group keynest.Group) VaultGroup {

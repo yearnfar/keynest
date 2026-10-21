@@ -16,6 +16,8 @@ export function CreateGroup(arg1:string,arg2:string,arg3:number):Promise<main.Va
 
 export function CurrentUpdateInfo():Promise<main.UpdateInfo>;
 
+export function DeleteEntryTemplate(arg1:string):Promise<Array<main.VaultEntryTemplate>>;
+
 export function DeleteGroup(arg1:string):Promise<main.VaultSnapshot>;
 
 export function DeleteRecycleBinEntry(arg1:string):Promise<void>;
@@ -34,11 +36,17 @@ export function MoveEntryToRecycleBin(arg1:string):Promise<main.VaultEntry>;
 
 export function MoveGroup(arg1:string,arg2:string):Promise<main.VaultSnapshot>;
 
+export function ReorderEntryTemplates(arg1:Array<string>):Promise<Array<main.VaultEntryTemplate>>;
+
 export function RestartApplication():Promise<void>;
 
 export function RestoreRecycleBinEntry(arg1:string):Promise<main.VaultEntry>;
 
 export function SaveEntry(arg1:main.SaveEntryRequest):Promise<main.SaveEntryResult>;
+
+export function SaveEntryTemplate(arg1:main.VaultEntryTemplate):Promise<main.VaultEntryTemplate>;
+
+export function SetEntryTemplateEnabled(arg1:string,arg2:boolean):Promise<Array<main.VaultEntryTemplate>>;
 
 export function TouchEntry(arg1:string):Promise<main.VaultEntry>;
 

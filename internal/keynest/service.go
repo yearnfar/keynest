@@ -2,6 +2,7 @@ package keynest
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -80,6 +81,19 @@ func (s *Service) SaveEntry(request SaveEntryRequest) (SaveEntryResult, error) {
 	if s.db == nil || s.dbPath == "" {
 		return SaveEntryResult{}, errors.New("保险库尚未解锁")
 	}
+	templates := templatesFromDatabase(s.db)
+	templateID := strings.TrimSpace(request.TemplateID)
+	if templateID == "" {
+		templateID = inferTemplateID(request.Category)
+	}
+	template, found := findTemplate(templates, templateID)
+	if !found {
+		return SaveEntryResult{}, errors.New("条目模板不存在")
+	}
+	fields, err := normalizeEntryFields(request.Fields, template, request.ID == "")
+	if err != nil {
+		return SaveEntryResult{}, err
+	}
 
 	entry, group := findEntry(s.db.Content.Root.Groups, request.ID)
 	if entry == nil {
@@ -155,12 +169,17 @@ func (s *Service) SaveEntry(request SaveEntryRequest) (SaveEntryResult, error) {
 	}
 
 	setEntryValue(entry, "Title", request.Name, false)
-	setEntryValue(entry, "UserName", request.Username, false)
-	setEntryValue(entry, "Password", request.Password, true)
-	setEntryValue(entry, "URL", request.URL, false)
-	setEntryValue(entry, "Notes", request.Note, false)
+	if request.Fields != nil {
+		replaceEntryFields(entry, fields)
+	} else {
+		setEntryValue(entry, "UserName", request.Username, false)
+		setEntryValue(entry, "Password", request.Password, true)
+		setEntryValue(entry, "URL", request.URL, false)
+		setEntryValue(entry, "Notes", request.Note, false)
+	}
 	setEntryValue(entry, "Category", defaultCategory(request.Category), false)
 	setEntryValue(entry, favoriteField, fmt.Sprintf("%t", request.Favorite), false)
+	setTemplateMetadata(entry, template.ID, template.Version)
 	entry.Tags = strings.Join(request.Tags, ";")
 	now := wrappers.Now()
 	entry.Times.LastModificationTime = &now
@@ -176,6 +195,264 @@ func (s *Service) SaveEntry(request SaveEntryRequest) (SaveEntryResult, error) {
 		return SaveEntryResult{}, err
 	}
 	return SaveEntryResult{Entry: saved}, nil
+}
+
+func normalizeEntryFields(fields []EntryField, template EntryTemplate, validateRequired bool) ([]EntryField, error) {
+	if fields == nil {
+		return nil, nil
+	}
+	if len(fields) > 64 {
+		return nil, errors.New("条目字段不能超过 64 个")
+	}
+	rules := make(map[string]TemplateField, len(template.Fields))
+	for _, field := range template.Fields {
+		rules[field.StorageKey] = field
+	}
+	seen := make(map[string]struct{}, len(fields))
+	normalized := make([]EntryField, 0, len(fields))
+	for _, field := range fields {
+		field.Key = strings.TrimSpace(field.Key)
+		if field.Key == "" || len(field.Key) > 128 || field.Key == "Title" || field.Key == "Category" || field.Key == favoriteField {
+			return nil, fmt.Errorf("字段键 %q 不可用", field.Key)
+		}
+		if _, exists := seen[field.Key]; exists {
+			return nil, fmt.Errorf("字段键 %q 重复", field.Key)
+		}
+		if rule, exists := rules[field.Key]; exists {
+			if rule.Protected || rule.Type == "password" {
+				field.Protected = true
+			}
+		}
+		if field.Key == "Password" {
+			field.Protected = true
+		}
+		seen[field.Key] = struct{}{}
+		normalized = append(normalized, field)
+	}
+	if validateRequired {
+		for _, rule := range template.Fields {
+			if rule.Required {
+				present := false
+				for _, field := range normalized {
+					if field.Key == rule.StorageKey && strings.TrimSpace(field.Value) != "" {
+						present = true
+						break
+					}
+				}
+				if !present {
+					return nil, fmt.Errorf("%s 为必填字段", rule.Label)
+				}
+			}
+		}
+	}
+	return normalized, nil
+}
+
+func (s *Service) SaveTemplate(template EntryTemplate) (EntryTemplate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil || s.dbPath == "" {
+		return EntryTemplate{}, errors.New("保险库尚未解锁")
+	}
+	if template.BuiltIn {
+		return EntryTemplate{}, errors.New("内置模板不能修改")
+	}
+	custom := customTemplatesFromDatabase(s.db)
+	creating := template.ID == ""
+	if creating {
+		id := gokeepasslib.NewUUID()
+		template.ID = "custom-" + strings.TrimRight(base64.RawURLEncoding.EncodeToString(id[:]), "=")
+		template.Version = 1
+	} else {
+		for _, builtIn := range builtInTemplates() {
+			if builtIn.ID == template.ID {
+				return EntryTemplate{}, errors.New("内置模板不能修改")
+			}
+		}
+	}
+	template.BuiltIn = false
+	template.Deleted = false
+	normalizeTemplate(&template)
+	if err := validateTemplate(template); err != nil {
+		return EntryTemplate{}, err
+	}
+	updated := false
+	for i := range custom {
+		if custom[i].ID == template.ID {
+			template.Version = custom[i].Version + 1
+			custom[i] = template
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		if !creating {
+			return EntryTemplate{}, errors.New("模板不存在")
+		}
+		custom = append(custom, template)
+	}
+	if err := saveCustomTemplates(s.db, custom); err != nil {
+		return EntryTemplate{}, err
+	}
+	if err := writeDatabase(s.db, s.dbPath); err != nil {
+		return EntryTemplate{}, err
+	}
+	saved, found := findTemplate(templatesFromDatabase(s.db), template.ID)
+	if !found {
+		return EntryTemplate{}, errors.New("模板保存失败")
+	}
+	return saved, nil
+}
+
+func (s *Service) DeleteTemplate(id string) ([]EntryTemplate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil || s.dbPath == "" {
+		return nil, errors.New("保险库尚未解锁")
+	}
+	id = strings.TrimSpace(id)
+	if id == "login" {
+		return nil, errors.New("登录信息模板不能删除")
+	}
+	templates := templatesFromDatabase(s.db)
+	template, found := findTemplate(templates, id)
+	if !found || template.Deleted {
+		return nil, errors.New("模板不存在")
+	}
+	preferences := templatePreferencesFromDatabase(s.db)
+	inUse := databaseUsesTemplate(s.db, id)
+	if !inUse {
+		if template.BuiltIn {
+			preferences.Removed = append(preferences.Removed, id)
+		} else {
+			custom := customTemplatesFromDatabase(s.db)
+			retained := custom[:0]
+			for _, candidate := range custom {
+				if candidate.ID != id {
+					retained = append(retained, candidate)
+				}
+			}
+			if err := saveCustomTemplates(s.db, retained); err != nil {
+				return nil, err
+			}
+		}
+		hidden := preferences.Hidden[:0]
+		for _, hiddenID := range preferences.Hidden {
+			if hiddenID != id {
+				hidden = append(hidden, hiddenID)
+			}
+		}
+		preferences.Hidden = hidden
+	} else {
+		alreadyHidden := false
+		for _, hiddenID := range preferences.Hidden {
+			if hiddenID == id {
+				alreadyHidden = true
+				break
+			}
+		}
+		if !alreadyHidden {
+			preferences.Hidden = append(preferences.Hidden, id)
+		}
+	}
+	order := preferences.Order[:0]
+	for _, orderedID := range preferences.Order {
+		if orderedID != id {
+			order = append(order, orderedID)
+		}
+	}
+	preferences.Order = order
+	disabled := preferences.Disabled[:0]
+	for _, disabledID := range preferences.Disabled {
+		if disabledID != id {
+			disabled = append(disabled, disabledID)
+		}
+	}
+	preferences.Disabled = disabled
+	if err := saveTemplatePreferences(s.db, preferences); err != nil {
+		return nil, err
+	}
+	if err := writeDatabase(s.db, s.dbPath); err != nil {
+		return nil, err
+	}
+	return templatesFromDatabase(s.db), nil
+}
+
+func (s *Service) SetTemplateEnabled(id string, enabled bool) ([]EntryTemplate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil || s.dbPath == "" {
+		return nil, errors.New("保险库尚未解锁")
+	}
+	id = strings.TrimSpace(id)
+	if id == "login" {
+		return nil, errors.New("新增条目模板必须保持启用")
+	}
+	template, found := findTemplate(templatesFromDatabase(s.db), id)
+	if !found || template.Deleted {
+		return nil, errors.New("模板不存在")
+	}
+	preferences := templatePreferencesFromDatabase(s.db)
+	disabled := make([]string, 0, len(preferences.Disabled)+1)
+	seen := false
+	for _, disabledID := range preferences.Disabled {
+		if disabledID == id {
+			if !enabled && !seen {
+				disabled = append(disabled, id)
+				seen = true
+			}
+			continue
+		}
+		disabled = append(disabled, disabledID)
+	}
+	if !enabled && !seen {
+		disabled = append(disabled, id)
+	}
+	preferences.Disabled = disabled
+	if err := saveTemplatePreferences(s.db, preferences); err != nil {
+		return nil, err
+	}
+	if err := writeDatabase(s.db, s.dbPath); err != nil {
+		return nil, err
+	}
+	return templatesFromDatabase(s.db), nil
+}
+
+func (s *Service) ReorderTemplates(ids []string) ([]EntryTemplate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil || s.dbPath == "" {
+		return nil, errors.New("保险库尚未解锁")
+	}
+	templates := templatesFromDatabase(s.db)
+	expected := make(map[string]struct{})
+	for _, template := range templates {
+		if template.ID != "login" && !template.Deleted {
+			expected[template.ID] = struct{}{}
+		}
+	}
+	if len(ids) != len(expected) {
+		return nil, errors.New("模板顺序无效")
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, exists := expected[id]; !exists {
+			return nil, errors.New("模板顺序无效")
+		}
+		if _, exists := seen[id]; exists {
+			return nil, errors.New("模板顺序无效")
+		}
+		seen[id] = struct{}{}
+	}
+	preferences := templatePreferencesFromDatabase(s.db)
+	preferences.Order = append([]string(nil), ids...)
+	if err := saveTemplatePreferences(s.db, preferences); err != nil {
+		return nil, err
+	}
+	if err := writeDatabase(s.db, s.dbPath); err != nil {
+		return nil, err
+	}
+	return templatesFromDatabase(s.db), nil
 }
 
 func appendEntryHistory(entry *gokeepasslib.Entry, maxItems int64) {

@@ -867,3 +867,423 @@ func TestDeleteGroupKeepsEntriesWithoutGroup(t *testing.T) {
 		}
 	}
 }
+
+func TestTemplateFieldsRoundTripAndHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Bank card", Folder: "个人", Category: "银行卡", TemplateID: "bank-card", TemplateVersion: 1,
+		Fields: []EntryField{
+			{Key: "UserName", Value: "Test Person"},
+			{Key: "Card Number", Value: "6217000012345678"},
+			{Key: "Password", Value: "482615"},
+			{Key: "Notes", Value: "Primary card"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save template entry: %v", err)
+	}
+	if created.Entry.TemplateID != "bank-card" || created.Entry.TemplateVersion != 1 {
+		t.Fatalf("unexpected template metadata: %#v", created.Entry)
+	}
+	var cardNumber EntryField
+	for _, field := range created.Entry.Fields {
+		if field.Key == "Card Number" {
+			cardNumber = field
+		}
+	}
+	if cardNumber.Value != "6217000012345678" || !cardNumber.Protected {
+		t.Fatalf("sensitive template field was not protected: %#v", cardNumber)
+	}
+
+	updatedFields := append([]EntryField(nil), created.Entry.Fields...)
+	for i := range updatedFields {
+		if updatedFields[i].Key == "Card Number" {
+			updatedFields[i].Value = "6217000099999999"
+		}
+	}
+	updated, err := service.SaveEntry(SaveEntryRequest{
+		ID: created.Entry.ID, Name: "Bank card", Folder: "个人", Category: "银行卡", TemplateID: "bank-card", Fields: updatedFields,
+	})
+	if err != nil {
+		t.Fatalf("update template entry: %v", err)
+	}
+	if updated.Entry.HistoryCount != 1 {
+		t.Fatalf("template update did not create history: %#v", updated.Entry)
+	}
+	history, err := service.GetEntryHistory(updated.Entry.ID)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("get template history: history=%#v err=%v", history, err)
+	}
+	if got := fieldValueForTest(history[0].Fields, "Card Number"); got != "6217000012345678" {
+		t.Fatalf("history card number = %q", got)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	persisted := snapshotFromDatabase(reopened, path).Entries[0]
+	if persisted.TemplateID != "bank-card" || fieldValueForTest(persisted.Fields, "Card Number") != "6217000099999999" {
+		t.Fatalf("template entry did not survive reopen: %#v", persisted)
+	}
+}
+
+func TestCustomTemplateCanBeRemovedWhileInUse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	template, err := service.SaveTemplate(EntryTemplate{
+		Name: "Server", Fields: []TemplateField{
+			{ID: "host", StorageKey: "Host", Label: "Host", Type: "text", Section: "details", Required: true, Searchable: true},
+			{ID: "token", StorageKey: "API Token", Label: "API Token", Type: "password", Section: "details", Protected: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save custom template: %v", err)
+	}
+	if template.ID == "" || template.BuiltIn || !template.Enabled || template.Version != 1 {
+		t.Fatalf("unexpected custom template: %#v", template)
+	}
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Production", Folder: "个人", Category: "Server", TemplateID: template.ID,
+		Fields: []EntryField{{Key: "Host", Value: "server.example.com"}, {Key: "API Token", Value: "secret"}},
+	})
+	if err != nil {
+		t.Fatalf("save custom template entry: %v", err)
+	}
+	templates, err := service.DeleteTemplate(template.ID)
+	if err != nil {
+		t.Fatalf("delete template: %v", err)
+	}
+	deleted, found := findTemplate(templates, template.ID)
+	if !found || !deleted.Deleted {
+		t.Fatalf("deleted template definition was not retained: %#v", templates)
+	}
+	updated, err := service.SaveEntry(SaveEntryRequest{
+		ID: created.Entry.ID, Name: "Production", Folder: "个人", Category: "Server", TemplateID: template.ID,
+		Fields: created.Entry.Fields,
+	})
+	if err != nil || updated.Entry.TemplateID != template.ID {
+		t.Fatalf("save entry with deleted template: entry=%#v err=%v", updated.Entry, err)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	templates = templatesFromDatabase(reopened)
+	persisted, found := findTemplate(templates, template.ID)
+	if !found || persisted.Name != "Server" || len(persisted.Fields) != 2 || !persisted.Deleted {
+		t.Fatalf("custom template did not survive reopen: %#v", templates)
+	}
+}
+
+func TestUnusedCustomTemplateIsPermanentlyRemoved(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	template, err := service.SaveTemplate(EntryTemplate{
+		Name: "Temporary", Fields: []TemplateField{
+			{ID: "value", StorageKey: "Temporary Value", Label: "Value", Type: "text", Section: "details"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save custom template: %v", err)
+	}
+	if _, err := service.SetTemplateEnabled(template.ID, false); err != nil {
+		t.Fatalf("disable custom template: %v", err)
+	}
+	if _, err := service.ReorderTemplates([]string{"identity", "secure-note", "wifi", "bank-card", template.ID}); err != nil {
+		t.Fatalf("reorder templates: %v", err)
+	}
+
+	templates, err := service.DeleteTemplate(template.ID)
+	if err != nil {
+		t.Fatalf("delete unused custom template: %v", err)
+	}
+	if _, found := findTemplate(templates, template.ID); found {
+		t.Fatalf("unused template remained in runtime definitions: %#v", templates)
+	}
+	if _, found := findTemplate(customTemplatesFromDatabase(service.db), template.ID); found {
+		t.Fatal("unused template remained in stored custom definitions")
+	}
+	preferences := templatePreferencesFromDatabase(service.db)
+	for name, ids := range map[string][]string{"order": preferences.Order, "hidden": preferences.Hidden, "disabled": preferences.Disabled} {
+		for _, id := range ids {
+			if id == template.ID {
+				t.Fatalf("deleted template remained in %s preferences: %#v", name, preferences)
+			}
+		}
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	if _, found := findTemplate(templatesFromDatabase(reopened), template.ID); found {
+		t.Fatal("unused template survived database reopen")
+	}
+}
+
+func TestCustomTemplateInRecycleBinIsSoftDeleted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	template, err := service.SaveTemplate(EntryTemplate{
+		Name: "Archived", Fields: []TemplateField{
+			{ID: "value", StorageKey: "Archived Value", Label: "Value", Type: "text", Section: "details"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save custom template: %v", err)
+	}
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Archived item", Category: template.Name, TemplateID: template.ID,
+		Fields: []EntryField{{Key: "Archived Value", Value: "kept"}},
+	})
+	if err != nil {
+		t.Fatalf("save custom template entry: %v", err)
+	}
+	if _, err := service.MoveEntryToRecycleBin(created.Entry.ID); err != nil {
+		t.Fatalf("move entry to recycle bin: %v", err)
+	}
+
+	templates, err := service.DeleteTemplate(template.ID)
+	if err != nil {
+		t.Fatalf("delete template used in recycle bin: %v", err)
+	}
+	deleted, found := findTemplate(templates, template.ID)
+	if !found || !deleted.Deleted {
+		t.Fatalf("template used in recycle bin was not soft deleted: %#v", templates)
+	}
+}
+
+func TestCustomTemplateInEntryHistoryIsSoftDeleted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	template, err := service.SaveTemplate(EntryTemplate{
+		Name: "Historical", Fields: []TemplateField{
+			{ID: "value", StorageKey: "Historical Value", Label: "Value", Type: "text", Section: "details"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save custom template: %v", err)
+	}
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Historical item", Category: template.Name, TemplateID: template.ID,
+		Fields: []EntryField{{Key: "Historical Value", Value: "kept"}},
+	})
+	if err != nil {
+		t.Fatalf("save custom template entry: %v", err)
+	}
+	if _, err := service.SaveEntry(SaveEntryRequest{
+		ID: created.Entry.ID, Name: "Login item", Category: "登录信息", TemplateID: "login",
+		Fields: []EntryField{{Key: "UserName", Value: "user"}, {Key: "Password", Value: "password"}},
+	}); err != nil {
+		t.Fatalf("change entry template: %v", err)
+	}
+
+	templates, err := service.DeleteTemplate(template.ID)
+	if err != nil {
+		t.Fatalf("delete template used in history: %v", err)
+	}
+	deleted, found := findTemplate(templates, template.ID)
+	if !found || !deleted.Deleted {
+		t.Fatalf("template used in history was not soft deleted: %#v", templates)
+	}
+}
+
+func TestUnusedBuiltInTemplateIsRemovedWithoutSoftDelete(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+
+	templates, err := service.DeleteTemplate("bank-card")
+	if err != nil {
+		t.Fatalf("delete unused built-in template: %v", err)
+	}
+	if _, found := findTemplate(templates, "bank-card"); found {
+		t.Fatalf("unused built-in template remained in runtime definitions: %#v", templates)
+	}
+	preferences := templatePreferencesFromDatabase(service.db)
+	if len(preferences.Removed) != 1 || preferences.Removed[0] != "bank-card" || len(preferences.Hidden) != 0 {
+		t.Fatalf("unused built-in template was not permanently removed: %#v", preferences)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	if _, found := findTemplate(templatesFromDatabase(reopened), "bank-card"); found {
+		t.Fatal("unused built-in template survived database reopen")
+	}
+}
+
+func TestTemplateOrderAndBuiltInDeletionPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+
+	reordered, err := service.ReorderTemplates([]string{"identity", "secure-note", "wifi", "bank-card"})
+	if err != nil {
+		t.Fatalf("reorder templates: %v", err)
+	}
+	want := []string{"login", "identity", "secure-note", "wifi", "bank-card"}
+	for i, id := range want {
+		if reordered[i].ID != id {
+			t.Fatalf("template %d = %q, want %q", i, reordered[i].ID, id)
+		}
+	}
+
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Bank card", Folder: "个人", Category: "银行卡", TemplateID: "bank-card",
+		Fields: []EntryField{{Key: "Card Number", Value: "6217000012345678"}},
+	})
+	if err != nil {
+		t.Fatalf("save bank card: %v", err)
+	}
+	templates, err := service.DeleteTemplate("bank-card")
+	if err != nil {
+		t.Fatalf("delete built-in template: %v", err)
+	}
+	deleted, found := findTemplate(templates, "bank-card")
+	if !found || !deleted.Deleted {
+		t.Fatalf("built-in template was not marked deleted: %#v", templates)
+	}
+	if _, err := service.DeleteTemplate("login"); err == nil {
+		t.Fatal("DeleteTemplate(login) succeeded")
+	}
+	if _, err := service.SaveEntry(SaveEntryRequest{
+		ID: created.Entry.ID, Name: "Bank card", Folder: "个人", Category: "银行卡", TemplateID: "bank-card",
+		Fields: created.Entry.Fields,
+	}); err != nil {
+		t.Fatalf("save entry with deleted built-in template: %v", err)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	persisted := templatesFromDatabase(reopened)
+	if persisted[0].ID != "login" || persisted[1].ID != "identity" || persisted[2].ID != "secure-note" || persisted[3].ID != "wifi" {
+		t.Fatalf("template order did not survive reopen: %#v", persisted)
+	}
+	deleted, found = findTemplate(persisted, "bank-card")
+	if !found || !deleted.Deleted {
+		t.Fatalf("built-in deletion did not survive reopen: %#v", persisted)
+	}
+}
+
+func TestTemplateEnabledStatePersistsWithoutAffectingExistingEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Office Wi-Fi", Folder: "个人", Category: "Wi-Fi", TemplateID: "wifi",
+		Fields: []EntryField{{Key: "UserName", Value: "Office"}, {Key: "Password", Value: "secret"}},
+	})
+	if err != nil {
+		t.Fatalf("save Wi-Fi entry: %v", err)
+	}
+
+	templates, err := service.SetTemplateEnabled("wifi", false)
+	if err != nil {
+		t.Fatalf("disable Wi-Fi template: %v", err)
+	}
+	wifi, found := findTemplate(templates, "wifi")
+	if !found || wifi.Enabled || wifi.Deleted {
+		t.Fatalf("Wi-Fi template was not disabled: %#v", wifi)
+	}
+	if _, err := service.SetTemplateEnabled("login", false); err == nil {
+		t.Fatal("SetTemplateEnabled(login, false) succeeded")
+	}
+
+	reordered, err := service.ReorderTemplates([]string{"wifi", "identity", "secure-note", "bank-card"})
+	if err != nil {
+		t.Fatalf("reorder templates with a disabled template: %v", err)
+	}
+	if reordered[1].ID != "wifi" || reordered[1].Enabled {
+		t.Fatalf("disabled template was not kept in the ordered list: %#v", reordered)
+	}
+	updated, err := service.SaveEntry(SaveEntryRequest{
+		ID: created.Entry.ID, Name: "Office Wi-Fi updated", Folder: "个人", Category: "Wi-Fi", TemplateID: "wifi",
+		Fields: created.Entry.Fields,
+	})
+	if err != nil || updated.Entry.TemplateID != "wifi" {
+		t.Fatalf("save existing entry with disabled template: entry=%#v err=%v", updated.Entry, err)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	wifi, found = findTemplate(templatesFromDatabase(reopened), "wifi")
+	if !found || wifi.Enabled {
+		t.Fatalf("disabled state did not survive reopen: %#v", wifi)
+	}
+	reopenedService := &Service{db: reopened, dbPath: path}
+	if _, err := reopenedService.SetTemplateEnabled("wifi", true); err != nil {
+		t.Fatalf("re-enable Wi-Fi template: %v", err)
+	}
+
+	reopenedAgain, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database after enabling: %v", err)
+	}
+	wifi, found = findTemplate(templatesFromDatabase(reopenedAgain), "wifi")
+	if !found || !wifi.Enabled {
+		t.Fatalf("enabled state did not survive reopen: %#v", wifi)
+	}
+}
+
+func TestCustomTemplatePasswordFieldsAreAlwaysProtected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := newTestService(t, path, "master-password")
+	template, err := service.SaveTemplate(EntryTemplate{
+		Name: "Credentials", Fields: []TemplateField{
+			{ID: "token", StorageKey: " API Token ", Label: " API Token ", Type: " password ", Section: " details "},
+			{ID: "password", StorageKey: "Password", Label: "Password", Type: "text", Section: "details"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save custom template: %v", err)
+	}
+	for _, field := range template.Fields {
+		if !field.Protected {
+			t.Fatalf("sensitive template field was not normalized: %#v", field)
+		}
+	}
+	if template.Fields[0].StorageKey != "API Token" || template.Fields[0].Type != "password" {
+		t.Fatalf("template field text was not normalized: %#v", template.Fields[0])
+	}
+
+	created, err := service.SaveEntry(SaveEntryRequest{
+		Name: "Production", Folder: "个人", Category: template.Name, TemplateID: template.ID,
+		Fields: []EntryField{
+			{Key: "API Token", Value: "token", Protected: false},
+			{Key: "Password", Value: "password", Protected: false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save template entry: %v", err)
+	}
+	for _, field := range created.Entry.Fields {
+		if !field.Protected {
+			t.Fatalf("sensitive entry field was not protected: %#v", field)
+		}
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	for _, field := range snapshotFromDatabase(reopened, path).Entries[0].Fields {
+		if !field.Protected {
+			t.Fatalf("sensitive entry field lost protection after reopen: %#v", field)
+		}
+	}
+}
+
+func fieldValueForTest(fields []EntryField, key string) string {
+	for _, field := range fields {
+		if field.Key == key {
+			return field.Value
+		}
+	}
+	return ""
+}

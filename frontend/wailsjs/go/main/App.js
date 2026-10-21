@@ -30,6 +30,10 @@ export function CurrentUpdateInfo() {
   return window['go']['main']['App']['CurrentUpdateInfo']();
 }
 
+export function DeleteEntryTemplate(arg1) {
+  return window['go']['main']['App']['DeleteEntryTemplate'](arg1);
+}
+
 export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
 }
@@ -66,6 +70,10 @@ export function MoveGroup(arg1, arg2) {
   return window['go']['main']['App']['MoveGroup'](arg1, arg2);
 }
 
+export function ReorderEntryTemplates(arg1) {
+  return window['go']['main']['App']['ReorderEntryTemplates'](arg1);
+}
+
 export function RestartApplication() {
   return window['go']['main']['App']['RestartApplication']();
 }
@@ -76,6 +84,14 @@ export function RestoreRecycleBinEntry(arg1) {
 
 export function SaveEntry(arg1) {
   return window['go']['main']['App']['SaveEntry'](arg1);
+}
+
+export function SaveEntryTemplate(arg1) {
+  return window['go']['main']['App']['SaveEntryTemplate'](arg1);
+}
+
+export function SetEntryTemplateEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetEntryTemplateEnabled'](arg1, arg2);
 }
 
 export function TouchEntry(arg1) {

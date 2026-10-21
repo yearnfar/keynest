@@ -146,7 +146,7 @@ func snapshotFromDatabase(db *gokeepasslib.Database, path string) Snapshot {
 	if name == "" {
 		name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
-	return Snapshot{Name: name, Path: path, Entries: entries, Groups: groups}
+	return Snapshot{Name: name, Path: path, Entries: entries, Groups: groups, Templates: templatesFromDatabase(db)}
 }
 
 func collectGroups(groups []gokeepasslib.Group, recycleBinUUID gokeepasslib.UUID, parentID string, depth int, result *[]Group) {
@@ -219,30 +219,34 @@ func mapEntryVersion(entry *gokeepasslib.Entry, folder, groupID string, trashed 
 		lastUsedAt = lastUsedTime.Time.UTC().Format(time.RFC3339Nano)
 	}
 	category := defaultCategory(entry.GetContent("Category"))
+	templateID, templateVersion := templateMetadata(entry, category)
 	mappedFolder := defaultFolder(folder)
 	if groupID == "" {
 		mappedFolder = ""
 	}
 	mapped := Entry{
-		ID:         string(id),
-		Name:       name,
-		Username:   entry.GetContent("UserName"),
-		Password:   entry.GetPassword(),
-		URL:        entry.GetContent("URL"),
-		Note:       entry.GetContent("Notes"),
-		GroupID:    groupID,
-		Folder:     mappedFolder,
-		Category:   category,
-		Favorite:   strings.EqualFold(entry.GetContent(favoriteField), "true"),
-		Modified:   modified,
-		CreatedAt:  createdAt,
-		ModifiedAt: modifiedAt,
-		LastUsedAt: lastUsedAt,
-		Color:      entryColor(entry.UUID[0]),
-		Initials:   initials(name),
-		Tags:       splitTags(entry.Tags),
-		Trashed:    trashed,
-		DeletedAt:  deletedAt,
+		ID:              string(id),
+		Name:            name,
+		Username:        entry.GetContent("UserName"),
+		Password:        entry.GetPassword(),
+		URL:             entry.GetContent("URL"),
+		Note:            entry.GetContent("Notes"),
+		GroupID:         groupID,
+		Folder:          mappedFolder,
+		Category:        category,
+		Favorite:        strings.EqualFold(entry.GetContent(favoriteField), "true"),
+		Modified:        modified,
+		CreatedAt:       createdAt,
+		ModifiedAt:      modifiedAt,
+		LastUsedAt:      lastUsedAt,
+		Color:           entryColor(entry.UUID[0]),
+		Initials:        initials(name),
+		Tags:            splitTags(entry.Tags),
+		Trashed:         trashed,
+		DeletedAt:       deletedAt,
+		TemplateID:      templateID,
+		TemplateVersion: templateVersion,
+		Fields:          entryFields(entry),
 	}
 	return mapped
 }
@@ -389,6 +393,31 @@ func setEntryValue(entry *gokeepasslib.Entry, key, content string, protected boo
 	}
 	value.Value.Content = content
 	value.Value.Protected = wrappers.NewBoolWrapper(protected)
+}
+
+func entryFields(entry *gokeepasslib.Entry) []EntryField {
+	fields := make([]EntryField, 0, len(entry.Values))
+	for i := range entry.Values {
+		value := entry.Values[i]
+		if value.Key == "Title" || value.Key == "Category" || value.Key == favoriteField {
+			continue
+		}
+		fields = append(fields, EntryField{Key: value.Key, Value: value.Value.Content, Protected: value.Value.Protected.Bool})
+	}
+	return fields
+}
+
+func replaceEntryFields(entry *gokeepasslib.Entry, fields []EntryField) {
+	values := make([]gokeepasslib.ValueData, 0, len(fields)+3)
+	for i := range entry.Values {
+		if entry.Values[i].Key == "Title" || entry.Values[i].Key == "Category" || entry.Values[i].Key == favoriteField {
+			values = append(values, entry.Values[i])
+		}
+	}
+	entry.Values = values
+	for _, field := range fields {
+		setEntryValue(entry, field.Key, field.Value, field.Protected)
+	}
 }
 
 func splitTags(value string) []string {

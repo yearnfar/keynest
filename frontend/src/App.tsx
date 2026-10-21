@@ -28,16 +28,24 @@ import {
     Trash2,
     X,
     Clock3,
+    ContactRound,
+    CreditCard,
+    FileKey2,
+    StickyNote,
+    Wifi,
     Zap,
 } from 'lucide-react';
 import './App.css';
 import Launcher, { VaultSnapshot } from './Launcher';
-import { ChangePassword, CreateGroup, DeleteGroup, DeleteRecycleBinEntry, EmptyRecycleBin, GetEntryHistory, LockDatabase, MoveEntryToRecycleBin, MoveGroup, RestoreRecycleBinEntry, SaveEntry, TouchEntry, UpdateGroup } from '../wailsjs/go/main/App';
+import { ChangePassword, CreateGroup, DeleteEntryTemplate, DeleteGroup, DeleteRecycleBinEntry, EmptyRecycleBin, GetEntryHistory, LockDatabase, MoveEntryToRecycleBin, MoveGroup, ReorderEntryTemplates, RestoreRecycleBinEntry, SaveEntry, SaveEntryTemplate, SetEntryTemplateEnabled, TouchEntry, UpdateGroup } from '../wailsjs/go/main/App';
+import {main} from '../wailsjs/go/models';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import PasswordGenerator, { calculatePasswordStrength, generateDefaultPassword, passwordStrengthMessageKey } from './PasswordGenerator';
 import UpdateSettings from './UpdateSettings';
 import { DEFAULT_GROUP_ICON_ID, KeePassGroupIcon, keepassGroupIcons } from './KeePassGroupIcon';
 import {localizedGroupIconLabel, useI18n, type MessageKey} from './i18n';
+import TemplateManager from './TemplateManager';
+import {builtInTemplates, categoryForTemplate, fieldValue, fieldsFromLegacyEntry, templateFor, templateIDForCategory, type EntryField, type EntryTemplate, type TemplateField} from './entryTemplates';
 
 type VaultItem = {
     id: string;
@@ -61,6 +69,9 @@ type VaultItem = {
     deletedAt?: string;
     previousFolder?: string;
     historyCount?: number;
+    templateId: string;
+    templateVersion: number;
+    fields: EntryField[];
 };
 
 type VaultGroup = {
@@ -85,13 +96,13 @@ const demoLastUsedAt = (minutesAgo: number) => new Date(Date.now() - minutesAgo 
 const demoTime = (daysAgo: number) => new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
 
 const seedItems: VaultItem[] = [
-    { id: 'demo-1', name: 'GitHub', username: 'yearnfar@example.com', password: 'V7!q9z#L2mR8', url: 'https://github.com', note: '个人开发账号，已开启双重验证。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: true, modified: '刚刚', createdAt: demoTime(420), modifiedAt: demoTime(0), lastUsedAt: demoLastUsedAt(2), color: '#171717', initials: 'GH', tags: ['开发', '2FA'] },
-    { id: 'demo-2', name: 'Notion', username: 'studio@example.com', password: 'B5$p1w!K9xQ3', url: 'https://notion.so', note: '团队知识库与项目文档。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: true, modified: '昨天', createdAt: demoTime(310), modifiedAt: demoTime(1), lastUsedAt: demoLastUsedAt(18), color: '#f1eee7', initials: 'N', tags: ['协作'] },
-    { id: 'demo-3', name: 'Apple ID', username: 'yearnfar@icloud.com', password: 'Q2^m8p@D4sY1', url: 'https://appleid.apple.com', note: '主设备账号。恢复密钥保存在安全笔记中。', groupId: 'demo-personal', folder: '个人', category: '登录信息', favorite: true, modified: '3 天前', createdAt: demoTime(760), modifiedAt: demoTime(3), lastUsedAt: demoLastUsedAt(95), color: '#454545', initials: 'A', tags: ['重要'] },
-    { id: 'demo-4', name: '招商银行', username: '**** 6217', password: '482615', url: 'https://cmbchina.com', note: '工资卡，2029 年 08 月到期。', groupId: 'demo-personal', folder: '个人', category: '银行卡', favorite: false, modified: '8 月 21 日', createdAt: demoTime(520), modifiedAt: demoTime(59), lastUsedAt: demoLastUsedAt(380), color: '#ba1e2e', initials: '招', tags: ['财务'] },
-    { id: 'demo-5', name: '家庭 Wi-Fi', username: 'KeyNest-Home', password: 'Home#2026!Net', url: '', note: '路由器管理地址：192.168.1.1', groupId: 'demo-personal', folder: '个人', category: '安全笔记', favorite: false, modified: '7 月 19 日', createdAt: demoTime(900), modifiedAt: demoTime(92), lastUsedAt: demoLastUsedAt(1440), color: '#39766e', initials: 'Wi', tags: ['家庭'] },
-    { id: 'demo-6', name: 'Figma', username: 'design@example.com', password: 'F1gma@Work#88', url: 'https://figma.com', note: '产品设计团队席位。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: false, modified: '6 月 08 日', createdAt: demoTime(680), modifiedAt: demoTime(133), lastUsedAt: demoLastUsedAt(4320), color: '#a54cf5', initials: 'F', tags: ['设计'] },
-];
+    { id: 'demo-1', name: 'GitHub', username: 'yearnfar@example.com', password: 'V7!q9z#L2mR8', url: 'https://github.com', note: '个人开发账号，已开启双重验证。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: true, modified: '刚刚', createdAt: demoTime(420), modifiedAt: demoTime(0), lastUsedAt: demoLastUsedAt(2), color: '#171717', initials: 'GH', tags: ['开发', '2FA'], templateId: 'login', templateVersion: 1, fields: [] },
+    { id: 'demo-2', name: 'Notion', username: 'studio@example.com', password: 'B5$p1w!K9xQ3', url: 'https://notion.so', note: '团队知识库与项目文档。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: true, modified: '昨天', createdAt: demoTime(310), modifiedAt: demoTime(1), lastUsedAt: demoLastUsedAt(18), color: '#f1eee7', initials: 'N', tags: ['协作'], templateId: 'login', templateVersion: 1, fields: [] },
+    { id: 'demo-3', name: 'Apple ID', username: 'yearnfar@icloud.com', password: 'Q2^m8p@D4sY1', url: 'https://appleid.apple.com', note: '主设备账号。恢复密钥保存在安全笔记中。', groupId: 'demo-personal', folder: '个人', category: '登录信息', favorite: true, modified: '3 天前', createdAt: demoTime(760), modifiedAt: demoTime(3), lastUsedAt: demoLastUsedAt(95), color: '#454545', initials: 'A', tags: ['重要'], templateId: 'login', templateVersion: 1, fields: [] },
+    { id: 'demo-4', name: '招商银行', username: '张三', password: '482615', url: '', note: '工资卡。', groupId: 'demo-personal', folder: '个人', category: '银行卡', favorite: false, modified: '8 月 21 日', createdAt: demoTime(520), modifiedAt: demoTime(59), lastUsedAt: demoLastUsedAt(380), color: '#ba1e2e', initials: '招', tags: ['财务'], templateId: 'bank-card', templateVersion: 1, fields: [{key: 'UserName', value: '张三', protected: false}, {key: 'Card Number', value: '6217000012345678', protected: true}, {key: 'Expiry Date', value: '2029-08', protected: false}, {key: 'CVV', value: '318', protected: true}, {key: 'Password', value: '482615', protected: true}, {key: 'Notes', value: '工资卡。', protected: false}] },
+    { id: 'demo-5', name: '家庭 Wi-Fi', username: 'KeyNest-Home', password: 'Home#2026!Net', url: 'http://192.168.1.1', note: '', groupId: 'demo-personal', folder: '个人', category: 'Wi-Fi', favorite: false, modified: '7 月 19 日', createdAt: demoTime(900), modifiedAt: demoTime(92), lastUsedAt: demoLastUsedAt(1440), color: '#39766e', initials: 'Wi', tags: ['家庭'], templateId: 'wifi', templateVersion: 1, fields: [{key: 'UserName', value: 'KeyNest-Home', protected: false}, {key: 'Password', value: 'Home#2026!Net', protected: true}, {key: 'Security Type', value: 'WPA3', protected: false}, {key: 'URL', value: 'http://192.168.1.1', protected: false}] },
+    { id: 'demo-6', name: 'Figma', username: 'design@example.com', password: 'F1gma@Work#88', url: 'https://figma.com', note: '产品设计团队席位。', groupId: 'demo-work', folder: '工作', category: '登录信息', favorite: false, modified: '6 月 08 日', createdAt: demoTime(680), modifiedAt: demoTime(133), lastUsedAt: demoLastUsedAt(4320), color: '#a54cf5', initials: 'F', tags: ['设计'], templateId: 'login', templateVersion: 1, fields: [] },
+].map((item) => ({...item, fields: fieldsFromLegacyEntry(item)}));
 
 const groupFilter = (id: string) => `group:${id}`;
 const ROOT_GROUP_DROP_TARGET = '__keynest-root-group__';
@@ -178,6 +189,13 @@ const arrangeGroups = (groups: VaultGroup[]) => {
     return arranged;
 };
 
+const normalizeVaultItem = (entry: Omit<VaultItem, 'templateId' | 'templateVersion' | 'fields'> & Partial<Pick<VaultItem, 'templateId' | 'templateVersion' | 'fields'>>): VaultItem => ({
+    ...entry,
+    templateId: entry.templateId || templateIDForCategory(entry.category),
+    templateVersion: entry.templateVersion || 1,
+    fields: fieldsFromLegacyEntry(entry),
+});
+
 const navItems: Array<{labelKey: MessageKey; icon: typeof Clock3; filter: string}> = [
     { labelKey: 'nav.recent', icon: Clock3, filter: 'recent' },
     { labelKey: 'nav.all', icon: LayoutGrid, filter: 'all' },
@@ -185,10 +203,45 @@ const navItems: Array<{labelKey: MessageKey; icon: typeof Clock3; filter: string
     { labelKey: 'nav.ungrouped', icon: FolderOpen, filter: 'ungrouped' },
 ];
 
+const templateNameKeys: Record<string, MessageKey> = {
+    login: 'template.login',
+    'bank-card': 'template.bankCard',
+    wifi: 'template.wifi',
+    'secure-note': 'template.secureNote',
+    identity: 'template.identity',
+};
+
+const templateIcons: Record<string, typeof FileKey2> = {
+    login: KeyRound,
+    'bank-card': CreditCard,
+    wifi: Wifi,
+    'secure-note': StickyNote,
+    identity: ContactRound,
+};
+
+const fieldLabelKeys: Record<string, MessageKey> = {
+    username: 'entry.username', password: 'entry.password', url: 'entry.url', notes: 'entry.notes',
+    cardholder: 'template.cardholder', cardNumber: 'template.cardNumber', expiryDate: 'template.expiryDate',
+    cvv: 'template.cvv', pin: 'template.pin', customerService: 'template.customerService',
+    ssid: 'template.ssid', securityType: 'template.securityType', routerAddress: 'template.routerAddress',
+    fullName: 'template.fullName', documentNumber: 'template.documentNumber', birthDate: 'template.birthDate',
+    issuedDate: 'template.issuedDate',
+};
+
+const sectionLabelKeys: Record<string, MessageKey> = {
+    login: 'entry.login', website: 'entry.website', notes: 'entry.notes', card: 'template.cardDetails',
+    security: 'settings.security', contact: 'template.contact', network: 'template.network',
+    identity: 'template.identityDetails', validity: 'template.validity', details: 'template.details',
+};
+
 function App() {
     const {locale, setLocale, t} = useI18n();
+    const templateName = (template: EntryTemplate) => template.builtIn && templateNameKeys[template.id] ? t(templateNameKeys[template.id]) : template.name;
+    const templateFieldLabel = (template: EntryTemplate, field: TemplateField) => template.builtIn && fieldLabelKeys[field.id] ? t(fieldLabelKeys[field.id]) : field.label;
+    const templateSectionLabel = (section: string) => sectionLabelKeys[section] ? t(sectionLabelKeys[section]) : section;
     const [items, setItems] = useState(seedItems);
     const [groups, setGroups] = useState(seedGroups);
+    const [templates, setTemplates] = useState<EntryTemplate[]>(builtInTemplates);
     const [selectedId, setSelectedId] = useState('demo-1');
     const [vaultOpen, setVaultOpen] = useState(false);
     const [vaultName, setVaultName] = useState('个人保险库');
@@ -200,6 +253,7 @@ function App() {
     const [query, setQuery] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [editing, setEditing] = useState(false);
+    const [editingBackup, setEditingBackup] = useState<VaultItem | null>(null);
     const [draftEntryID, setDraftEntryID] = useState<string | null>(null);
     const [draftPassword, setDraftPassword] = useState('');
     const [generator, setGenerator] = useState<'detail' | null>(null);
@@ -227,15 +281,20 @@ function App() {
     const [moreMenuOpen, setMoreMenuOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settingsQuery, setSettingsQuery] = useState('');
-    const [settingsPage, setSettingsPage] = useState<'general' | 'security' | 'updates'>('general');
+    const [settingsPage, setSettingsPage] = useState<'general' | 'security' | 'templates' | 'updates'>('general');
     const [autoLockMinutes, setAutoLockMinutes] = useState<AutoLockMinutes>(initialAutoLockMinutes);
     const [changePasswordOpen, setChangePasswordOpen] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
     const [visibleMasterPasswordField, setVisibleMasterPasswordField] = useState<'current' | 'new' | 'confirm' | null>(null);
     const [toast, setToast] = useState('');
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+    const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<EntryTemplate | null>(null);
+    const [deletingTemplate, setDeletingTemplate] = useState(false);
+    const [revealedFields, setRevealedFields] = useState<Set<string>>(() => new Set());
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const groupMenuRef = useRef<HTMLDivElement>(null);
+    const templatePickerRef = useRef<HTMLDivElement>(null);
     const historyRequestRef = useRef(0);
     const autoLockTimerRef = useRef<number | null>(null);
     const lastActivityAtRef = useRef(Date.now());
@@ -266,10 +325,38 @@ function App() {
             filtered.sort((left, right) => (Date.parse(right.lastUsedAt ?? '') || 0) - (Date.parse(left.lastUsedAt ?? '') || 0));
         }
         if (!normalized) return filtered;
-        return filtered.filter((item) => [item.name, item.username, item.url, ...item.tags].join(' ').toLowerCase().includes(normalized));
-    }, [activeGroupIDs, filter, items, query]);
+        return filtered.filter((item) => {
+            const template = templateFor(templates, item.templateId);
+            const searchableKeys = new Set(template.fields.filter((field) => field.searchable && !field.protected).map((field) => field.storageKey));
+            const searchableValues = item.fields.filter((field) => searchableKeys.has(field.key) && !field.protected).map((field) => field.value);
+            return [item.name, ...searchableValues, ...item.tags].join(' ').toLowerCase().includes(normalized);
+        });
+    }, [activeGroupIDs, filter, items, query, templates]);
+    const availableTemplates = useMemo(() => templates.filter((template) => !template.deleted), [templates]);
+    const managedTemplates = useMemo(() => availableTemplates.filter((template) => template.id !== 'login'), [availableTemplates]);
+    const enabledManagedTemplates = useMemo(() => managedTemplates.filter((template) => template.enabled), [managedTemplates]);
+    const defaultEntryTemplate = templateFor(templates, 'login');
     const selected = visibleItems.find((item) => item.id === selectedId) ?? visibleItems[0];
+    const selectedTemplate = templateFor(templates, selected?.templateId);
+    const selectedTemplateSections = useMemo(() => {
+        const sections = new Map<string, TemplateField[]>();
+        for (const field of selectedTemplate.fields) sections.set(field.section, [...(sections.get(field.section) ?? []), field]);
+        const knownKeys = new Set(selectedTemplate.fields.map((field) => field.storageKey));
+        const extraFields = selected?.fields.filter((field) => !knownKeys.has(field.key)) ?? [];
+        return {sections: [...sections.entries()], extraFields};
+    }, [selected?.fields, selectedTemplate]);
     const historyVersion = historyVersions[historyIndex] ?? historyVersions[0];
+    const historyTemplate = templateFor(templates, historyVersion?.templateId);
+    const historyDisplayFields = useMemo(() => {
+        if (!historyVersion) return [];
+        const values = new Map(historyVersion.fields.map((field) => [field.key, field]));
+        const ordered = historyTemplate.fields.map((field) => {
+            const existing = values.get(field.storageKey);
+            return {key: field.storageKey, value: existing?.value ?? '', protected: existing?.protected ?? field.protected, label: templateFieldLabel(historyTemplate, field)};
+        });
+        const known = new Set(historyTemplate.fields.map((field) => field.storageKey));
+        return [...ordered, ...historyVersion.fields.filter((field) => !known.has(field.key)).map((field) => ({...field, label: field.key}))];
+    }, [historyTemplate, historyVersion, locale]);
     const isEditingSelected = editing && !selected?.trashed;
     const isDraftSelected = Boolean(selected && selected.id === draftEntryID);
     const visibleItemCount = visibleItems.filter((item) => item.id !== draftEntryID).length;
@@ -335,10 +422,25 @@ function App() {
             setItems((current) => current.filter((item) => item.id !== draftEntryID));
             setSelectedId((current) => current === draftEntryID ? '' : current);
             setDraftEntryID(null);
+        } else if (editingBackup) {
+            setItems((current) => current.map((item) => item.id === editingBackup.id ? editingBackup : item));
+            setDraftPassword(editingBackup.password);
         }
+        setEditingBackup(null);
         setEditing(false);
         setGenerator(null);
         setShowPassword(false);
+    };
+
+    const beginItemEditing = () => {
+        if (!selected || selected.trashed) return;
+        if (!editing) {
+            setEditingBackup({...selected, fields: selected.fields.map((field) => ({...field}))});
+            setDraftPassword(selected.password);
+        }
+        setEditing(true);
+        setGenerator(null);
+        setMoreMenuOpen(false);
     };
 
     const selectGroup = (groupID: string) => {
@@ -373,6 +475,7 @@ function App() {
     const normalizedSettingsQuery = settingsQuery.trim().toLowerCase();
     const generalSettingVisible = !normalizedSettingsQuery || '通用 语言 language general 中文 english'.includes(normalizedSettingsQuery);
     const securitySettingVisible = !normalizedSettingsQuery || '安全 主密码 修改密码 自动锁定 空闲 分钟 security master password auto lock idle minute'.includes(normalizedSettingsQuery);
+    const templateSettingVisible = !normalizedSettingsQuery || '模板 字段 登录 银行卡 wifi 笔记 身份 template field login card note identity'.includes(normalizedSettingsQuery);
     const updateSettingVisible = !normalizedSettingsQuery || '应用 关于 版本 更新 自动更新 application about version update github releases'.includes(normalizedSettingsQuery);
 
     useEffect(() => {
@@ -394,6 +497,22 @@ function App() {
     useEffect(() => setMoreMenuOpen(false), [filter, selected?.id]);
 
     useEffect(() => {
+        if (!templatePickerOpen) return;
+        const closeOnOutsideClick = (event: MouseEvent) => {
+            if (!templatePickerRef.current?.contains(event.target as Node)) setTemplatePickerOpen(false);
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setTemplatePickerOpen(false);
+        };
+        document.addEventListener('mousedown', closeOnOutsideClick);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('mousedown', closeOnOutsideClick);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [templatePickerOpen]);
+
+    useEffect(() => {
         historyRequestRef.current += 1;
         setHistoryOpen(false);
         setHistoryVersions([]);
@@ -401,6 +520,7 @@ function App() {
         setHistoryError('');
         setHistoryIndex(0);
         setShowHistoryPassword(false);
+        setRevealedFields(new Set());
     }, [selected?.id]);
 
     useEffect(() => {
@@ -457,6 +577,7 @@ function App() {
         setDraftPassword(item.password);
         setShowPassword(item.id === draftEntryID);
         setEditing(item.id === draftEntryID);
+        setEditingBackup(null);
         setGenerator(null);
     };
 
@@ -468,10 +589,11 @@ function App() {
     };
 
     const openSnapshot = (snapshot: VaultSnapshot, demo = false) => {
-        const next = snapshot.entries as VaultItem[];
+        const next = snapshot.entries.map((entry) => normalizeVaultItem(entry as VaultItem));
         const nextGroups = (snapshot.groups ?? []) as VaultGroup[];
         setItems(next);
         setGroups(nextGroups);
+        setTemplates(snapshot.templates?.length ? snapshot.templates : builtInTemplates);
         setSelectedId(next[0]?.id ?? '');
         setDraftPassword(next[0]?.password ?? '');
         setVaultName(snapshot.name);
@@ -482,12 +604,13 @@ function App() {
         setVaultOpen(true);
         setSettingsOpen(false);
         setSettingsQuery('');
+        setDeleteTemplateTarget(null);
         setFilter('all');
         setQuery('');
         setCollapsedGroupIDs(new Set());
     };
 
-    const openDemo = () => openSnapshot({ name: `KeyNest ${t('launcher.demo')}`, path: 'demo.kdbx', entries: seedItems, groups: seedGroups }, true);
+    const openDemo = () => openSnapshot({ name: `KeyNest ${t('launcher.demo')}`, path: 'demo.kdbx', entries: seedItems, groups: seedGroups, templates: builtInTemplates }, true);
 
     const persistEntry = async (item: VaultItem): Promise<SaveResult> => {
         if (demoMode || !(window as Window & { go?: unknown }).go) {
@@ -501,7 +624,7 @@ function App() {
             setDemoHistories((histories) => ({ ...histories, [current.id]: history }));
             return { entry: { ...item, historyCount: history.length } };
         }
-        const saved = await SaveEntry({
+        const saved = await SaveEntry(main.SaveEntryRequest.createFrom({
             id: item.id.startsWith('new-') ? '' : item.id,
             name: item.name,
             username: item.username,
@@ -513,7 +636,10 @@ function App() {
             category: item.category,
             favorite: item.favorite,
             tags: item.tags,
-        });
+            templateId: item.templateId,
+            templateVersion: item.templateVersion,
+            fields: item.fields,
+        }));
         return saved as SaveResult;
     };
 
@@ -540,7 +666,7 @@ function App() {
                 ? demoHistories[entryID] ?? []
                 : await GetEntryHistory(entryID) as VaultItem[];
             if (historyRequestRef.current !== requestID) return;
-            setHistoryVersions(history);
+            setHistoryVersions(history.map((entry) => normalizeVaultItem(entry)));
         } catch {
             if (historyRequestRef.current !== requestID) return;
             setHistoryError(t('entry.historyLoadFailed'));
@@ -612,7 +738,7 @@ function App() {
             } else {
                 const snapshot = await MoveGroup(group.id, parentID) as VaultSnapshot;
                 setGroups((snapshot.groups ?? []) as VaultGroup[]);
-                setItems(snapshot.entries as VaultItem[]);
+                setItems(snapshot.entries.map((entry) => normalizeVaultItem(entry as VaultItem)));
             }
             if (parentID) {
                 setCollapsedGroupIDs((current) => {
@@ -664,14 +790,30 @@ function App() {
         if (!selected || selected.trashed) return;
         const data = new FormData(event.currentTarget);
         const name = String(data.get('name')).trim() || 'no title';
+        const templateKeys = new Set(selectedTemplate.fields.map((field) => field.storageKey));
+        const fields: EntryField[] = [
+            ...selectedTemplate.fields.map((field) => ({
+                key: field.storageKey,
+                value: String(data.get(`field:${field.storageKey}`) ?? ''),
+                protected: field.protected,
+            })),
+            ...selected.fields.filter((field) => !templateKeys.has(field.key)).map((field) => ({
+                ...field,
+                value: String(data.get(`extra:${field.key}`) ?? field.value),
+            })),
+        ];
         const updated: VaultItem = {
             ...selected,
             name,
             initials: name.slice(0, 2).toUpperCase(),
-            username: String(data.get('username')),
-            password: String(data.get('password')),
-            url: String(data.get('url')),
-            note: String(data.get('note')),
+            username: fieldValue(fields, 'UserName'),
+            password: fieldValue(fields, 'Password'),
+            url: fieldValue(fields, 'URL'),
+            note: fieldValue(fields, 'Notes'),
+            fields,
+            templateId: selectedTemplate.id,
+            templateVersion: selectedTemplate.version,
+            category: selectedTemplate.builtIn ? categoryForTemplate(selectedTemplate.id) : selectedTemplate.name,
             modified: '刚刚',
             modifiedAt: new Date().toISOString(),
         };
@@ -683,6 +825,7 @@ function App() {
             setSelectedId(result.entry.id);
             setDraftEntryID(null);
             setEditing(false);
+            setEditingBackup(null);
             setDraftPassword(result.entry.password);
             notify(creating ? t('entry.created') : passwordChanged ? t('entry.passwordUpdated') : t('entry.saved'));
         } catch (reason) {
@@ -690,14 +833,20 @@ function App() {
         }
     };
 
-    const createItem = () => {
+    const createItem = (templateID = 'login') => {
         if (entryActionPending) return;
+        const template = templateFor(templates, templateID);
         const nextId = `new-${Date.now()}`;
         const name = 'no title';
         const selectedGroupID = filter.startsWith('group:') ? filter.slice('group:'.length) : '';
         const selectedGroup = groups.find((group) => group.id === selectedGroupID);
         const now = new Date().toISOString();
-        const password = generateDefaultPassword();
+        const password = template.id === 'login' || template.id === 'wifi' ? generateDefaultPassword() : '';
+        const fields = template.fields.map((field) => ({
+            key: field.storageKey,
+            value: field.storageKey === 'Password' ? password : '',
+            protected: field.protected,
+        }));
         const next: VaultItem = {
             id: nextId,
             name,
@@ -707,7 +856,7 @@ function App() {
             note: '',
             groupId: selectedGroup?.id ?? '',
             folder: selectedGroup?.name ?? '',
-            category: '登录信息',
+            category: template.builtIn ? categoryForTemplate(template.id) : template.name,
             favorite: false,
             modified: '刚刚',
             createdAt: now,
@@ -716,6 +865,9 @@ function App() {
             color: '#356d65',
             initials: name.slice(0, 2).toUpperCase(),
             tags: [],
+            templateId: template.id,
+            templateVersion: template.version,
+            fields,
         };
         setItems((current) => [next, ...current.filter((item) => item.id !== draftEntryID)]);
         setDraftEntryID(next.id);
@@ -725,7 +877,109 @@ function App() {
         setDraftPassword(next.password);
         setShowPassword(true);
         setEditing(true);
+        setEditingBackup(null);
         setGenerator(null);
+        setTemplatePickerOpen(false);
+    };
+
+    const changeSelectedTemplate = (templateID: string) => {
+        if (!selected || selected.trashed) return;
+        if (!isDraftSelected && !window.confirm(t('template.changeWarning'))) return;
+        const template = templateFor(templates, templateID);
+        const existingByKey = new Map(selected.fields.map((field) => [field.key, field]));
+        const templateKeys = new Set(template.fields.map((field) => field.storageKey));
+        const fields = [
+            ...template.fields.map((field) => existingByKey.get(field.storageKey) ?? {key: field.storageKey, value: '', protected: field.protected}),
+            ...selected.fields.filter((field) => !templateKeys.has(field.key)),
+        ];
+        const updated = normalizeVaultItem({
+            ...selected,
+            templateId: template.id,
+            templateVersion: template.version,
+            category: template.builtIn ? categoryForTemplate(template.id) : template.name,
+            fields,
+            username: fieldValue(fields, 'UserName'),
+            password: fieldValue(fields, 'Password'),
+            url: fieldValue(fields, 'URL'),
+            note: fieldValue(fields, 'Notes'),
+        });
+        setItems((current) => current.map((item) => item.id === selected.id ? updated : item));
+        setDraftPassword(updated.password);
+        setRevealedFields(new Set());
+    };
+
+    const saveTemplate = async (template: EntryTemplate) => {
+        try {
+            if (demoMode || !(window as Window & { go?: unknown }).go) {
+                const saved = {...template, id: template.id || `custom-demo-${Date.now()}`, version: template.id ? template.version + 1 : 1, builtIn: false, deleted: false};
+                setTemplates((current) => current.some((candidate) => candidate.id === saved.id)
+                    ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+                    : [...current, saved]);
+            } else {
+                const saved = await SaveEntryTemplate(main.VaultEntryTemplate.createFrom(template)) as EntryTemplate;
+                setTemplates((current) => current.some((candidate) => candidate.id === saved.id)
+                    ? current.map((candidate) => candidate.id === saved.id ? saved : candidate)
+                    : [...current, saved]);
+            }
+            notify(t('template.saved'));
+        } catch (reason) {
+            notify(String(reason).replace(/^Error:\s*/, ''));
+            throw reason;
+        }
+    };
+
+    const deleteTemplate = async () => {
+        if (!deleteTemplateTarget || deletingTemplate) return;
+        setDeletingTemplate(true);
+        try {
+            if (demoMode || !(window as Window & { go?: unknown }).go) {
+                setTemplates((current) => current.map((candidate) => candidate.id === deleteTemplateTarget.id ? {...candidate, deleted: true} : candidate));
+            } else {
+                setTemplates(await DeleteEntryTemplate(deleteTemplateTarget.id) as EntryTemplate[]);
+            }
+            setDeleteTemplateTarget(null);
+            notify(t('template.deleted'));
+        } catch (reason) {
+            notify(String(reason).replace(/^Error:\s*/, ''));
+        } finally {
+            setDeletingTemplate(false);
+        }
+    };
+
+    const reorderTemplates = async (ordered: EntryTemplate[]) => {
+        const ids = ordered.map((template) => template.id);
+        try {
+            if (demoMode || !(window as Window & { go?: unknown }).go) {
+                setTemplates((current) => {
+                    const byID = new Map(current.map((template) => [template.id, template]));
+                    const login = byID.get('login');
+                    const reordered = ids.flatMap((id) => {
+                        const template = byID.get(id);
+                        return template && !template.deleted && template.id !== 'login' ? [template] : [];
+                    });
+                    const deleted = current.filter((template) => template.deleted);
+                    return [...(login ? [login] : []), ...reordered, ...deleted];
+                });
+            } else {
+                setTemplates(await ReorderEntryTemplates(ids) as EntryTemplate[]);
+            }
+        } catch (reason) {
+            notify(String(reason).replace(/^Error:\s*/, ''));
+            throw reason;
+        }
+    };
+
+    const setTemplateEnabled = async (template: EntryTemplate, enabled: boolean) => {
+        try {
+            if (demoMode || !(window as Window & { go?: unknown }).go) {
+                setTemplates((current) => current.map((candidate) => candidate.id === template.id ? {...candidate, enabled} : candidate));
+            } else {
+                setTemplates(await SetEntryTemplateEnabled(template.id, enabled) as EntryTemplate[]);
+            }
+        } catch (reason) {
+            notify(String(reason).replace(/^Error:\s*/, ''));
+            throw reason;
+        }
     };
 
     const saveGroup = async (event: FormEvent<HTMLFormElement>) => {
@@ -748,7 +1002,7 @@ function App() {
                 } else {
                     const snapshot = await UpdateGroup(editingGroup.id, name, parentId, groupIconID) as VaultSnapshot;
                     setGroups((snapshot.groups ?? []) as VaultGroup[]);
-                    setItems(snapshot.entries as VaultItem[]);
+                    setItems(snapshot.entries.map((entry) => normalizeVaultItem(entry as VaultItem)));
                 }
             } else {
                 const created = demoMode || !(window as Window & { go?: unknown }).go
@@ -816,7 +1070,7 @@ function App() {
                 setGroups((current) => current.filter((group) => !deletedIDs.has(group.id)));
             } else {
                 const snapshot = await DeleteGroup(deleteGroupTarget.id) as VaultSnapshot;
-                nextItems = snapshot.entries as VaultItem[];
+                nextItems = snapshot.entries.map((entry) => normalizeVaultItem(entry as VaultItem));
                 setGroups((snapshot.groups ?? []) as VaultGroup[]);
             }
             setItems(nextItems);
@@ -844,6 +1098,7 @@ function App() {
         setGroupMenuID(null);
         setClearTrashOpen(false);
         setDeleteTarget(null);
+        setDeleteTemplateTarget(null);
         setMoreMenuOpen(false);
         setSettingsOpen(false);
         setSettingsQuery('');
@@ -1275,6 +1530,7 @@ function App() {
                         <button type="button" className={settingsPage === 'updates' ? 'active' : ''} onClick={() => setSettingsPage('updates')}><Info size={17} /><span>{t('settings.about')}</span><ChevronRight size={13} /></button>
                         <span className="settings-nav-group">{t('settings.vault')}</span>
                         <button type="button" className={settingsPage === 'security' ? 'active' : ''} onClick={() => setSettingsPage('security')}><ShieldCheck size={17} /><span>{t('settings.security')}</span><ChevronRight size={13} /></button>
+                        <button type="button" className={settingsPage === 'templates' ? 'active' : ''} onClick={() => setSettingsPage('templates')}><FileKey2 size={17} /><span>{t('template.manage')}</span><ChevronRight size={13} /></button>
                     </div>
                 </section>
 
@@ -1283,7 +1539,7 @@ function App() {
                         <div className="sync-state"><span /><span>{t(demoMode ? 'settings.demoData' : 'settings.savedLocal')}</span></div>
                     </header>
                     <div className="settings-detail-content">
-                        <h1>{t(settingsPage === 'general' ? 'settings.general' : settingsPage === 'security' ? 'settings.security' : 'settings.about')}</h1>
+                        <h1>{t(settingsPage === 'general' ? 'settings.general' : settingsPage === 'security' ? 'settings.security' : settingsPage === 'templates' ? 'template.manage' : 'settings.about')}</h1>
                         {settingsPage === 'general'
                             ? generalSettingVisible
                                 ? <section className="settings-section">
@@ -1322,6 +1578,10 @@ function App() {
                                     </div>
                                     : <div className="settings-empty"><Search size={22} /><span>{t('common.noMatchingSettings')}</span></div>}
                             </section>
+                            : settingsPage === 'templates'
+                                ? templateSettingVisible
+                                    ? <TemplateManager templates={managedTemplates.map((template) => ({...template, name: templateName(template), fields: template.fields.map((field) => ({...field, label: templateFieldLabel(template, field)}))}))} t={t} onSave={saveTemplate} onDelete={setDeleteTemplateTarget} onReorder={reorderTemplates} onToggleEnabled={setTemplateEnabled}/>
+                                    : <div className="settings-empty"><Search size={22}/><span>{t('common.noMatchingSettings')}</span></div>
                             : updateSettingVisible
                                 ? <UpdateSettings/>
                                 : <div className="settings-empty"><Search size={22}/><span>{t('common.noMatchingSettings')}</span></div>}
@@ -1342,7 +1602,17 @@ function App() {
                     <div><h1>{sectionTitle}</h1><span>{t('common.items', {count: visibleItemCount})}</span></div>
                     {filter === 'trash'
                         ? trashCount > 0 && <button className="clear-trash-button" onClick={() => setClearTrashOpen(true)} title={t('entry.clearTrash')}><Trash2 size={14} /> {t('entry.clear')}</button>
-                        : <button className="add-button" onClick={() => void createItem()} disabled={entryActionPending} title={t('entry.new')}><Plus size={18} /></button>}
+                        : <div className="template-create" ref={templatePickerRef}>
+                            <button className={`add-button ${templatePickerOpen ? 'active' : ''}`} onClick={() => setTemplatePickerOpen((open) => !open)} disabled={entryActionPending} title={t('entry.new')} aria-haspopup="menu" aria-expanded={templatePickerOpen}><Plus size={18} /></button>
+                            {templatePickerOpen && <div className="template-picker" role="menu">
+                                <button type="button" role="menuitem" onClick={() => createItem('login')}><Plus size={17}/><span><strong>{t('entry.new')}</strong><small>{t('template.fieldCount', {count: defaultEntryTemplate.fields.length})}</small></span></button>
+                                <span>{t('template.choose')}</span>
+                                {enabledManagedTemplates.map((template) => {
+                                    const Icon = templateIcons[template.id] ?? FileKey2;
+                                    return <button key={template.id} type="button" role="menuitem" onClick={() => createItem(template.id)}><Icon size={17}/><span><strong>{templateName(template)}</strong><small>{t('template.fieldCount', {count: template.fields.length})}</small></span></button>;
+                                })}
+                            </div>}
+                        </div>}
                 </div>
 
                 <div className="item-list" role="listbox" aria-label={sectionTitle}>
@@ -1384,7 +1654,7 @@ function App() {
                         </div>
                         : isDraftSelected ? null : <div className="toolbar-actions">
                             <button className={`icon-button ${selected.favorite ? 'is-favorite' : ''}`} onClick={toggleFavorite} title={t(selected.favorite ? 'entry.favoriteRemove' : 'entry.favoriteAdd')}><Star size={18} fill={selected.favorite ? 'currentColor' : 'none'} /></button>
-                            <button className="icon-button" onClick={() => { if (!editing) setDraftPassword(selected.password); setEditing((value) => !value); setGenerator(null); setMoreMenuOpen(false); }} title={t('entry.edit')}><Edit3 size={18} /></button>
+                            <button className="icon-button" onClick={() => editing ? cancelItemEditing() : beginItemEditing()} title={t('entry.edit')}><Edit3 size={18} /></button>
                             <div className="entry-more" ref={moreMenuRef}>
                                 <button className={`icon-button ${moreMenuOpen ? 'active' : ''}`} type="button" onClick={() => setMoreMenuOpen((value) => !value)} title={t('entry.moreActions')} aria-haspopup="menu" aria-expanded={moreMenuOpen}><MoreHorizontal size={19} /></button>
                                 {moreMenuOpen && <div className="entry-actions-menu" role="menu">
@@ -1408,51 +1678,67 @@ function App() {
                                     </span>
                                     : <span>{selected.folder}</span>}
                             </span>}
+                            <span className="entry-template-meta"><FileKey2 size={12}/>{isEditingSelected
+                                ? <select value={selectedTemplate.id} onChange={(event) => changeSelectedTemplate(event.target.value)} aria-label={t('template.change')}>
+                                    {selectedTemplate.deleted && <option value={selectedTemplate.id}>{templateName(selectedTemplate)}</option>}
+                                    {availableTemplates.map((template) => <option key={template.id} value={template.id}>{templateName(template)}</option>)}
+                                </select>
+                                : <span>{templateName(selectedTemplate)}</span>}
+                            </span>
                         </div>
                     </div>
 
-                    <div className="detail-section">
-                        <h3>{t('entry.login')}</h3>
-                        <Field label={t('entry.username')} name="username" value={selected.username} editing={isEditingSelected} action={<button type="button" className="field-action" onClick={() => copyValue(t('entry.username'), selected.username, isDraftSelected ? undefined : selected)} title={t('entry.copyUsername')}><Copy size={16} /></button>} />
-                        <Field
-                            label={t('entry.password')}
-                            name="password"
-                            value={isEditingSelected ? draftPassword : showPassword ? selected.password : '••••••••••••'}
-                            originalValue={selected.password}
-                            inputValue={draftPassword}
-                            onInputChange={setDraftPassword}
-                            inputType={showPassword ? 'text' : 'password'}
-                            editing={isEditingSelected}
-                            strong
-                            action={<div className="password-actions-wrap">
+                    {selectedTemplateSections.sections.map(([section, sectionFields]) => <div className={`detail-section ${section === 'notes' ? 'notes-section' : ''}`} key={section}>
+                        <h3>{templateSectionLabel(section)}</h3>
+                        {sectionFields.map((field) => {
+                            const storedValue = fieldValue(selected.fields, field.storageKey);
+                            const currentValue = field.storageKey === 'Password' && isEditingSelected ? draftPassword : storedValue;
+                            const revealed = field.storageKey === 'Password' ? showPassword : revealedFields.has(field.storageKey);
+                            const displayValue = field.protected && !revealed && currentValue ? '••••••••••••' : currentValue || t('common.notSet');
+                            const label = templateFieldLabel(selectedTemplate, field);
+                            const fieldActions = <div className={field.storageKey === 'Password' ? 'password-actions-wrap' : 'field-actions'}>
                                 <div className="field-actions">
-                                    {!selected.trashed && <button type="button" className={`field-action ${generator === 'detail' ? 'active' : ''}`} onClick={() => setGenerator((value) => value === 'detail' ? null : 'detail')} title={t('entry.generatePassword')}><Zap size={16} /></button>}
-                                    <button type="button" className="field-action" onClick={() => setShowPassword((value) => !value)} title={t(showPassword ? 'launcher.hidePassword' : 'launcher.showPassword')}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-                                    <button type="button" className="field-action" onClick={() => copyValue(t('entry.password'), isEditingSelected ? draftPassword : selected.password, isDraftSelected ? undefined : selected)} title={t('entry.copyPassword')}><Copy size={16} /></button>
+                                    {field.storageKey === 'Password' && !selected.trashed && <button type="button" className={`field-action ${generator === 'detail' ? 'active' : ''}`} onClick={() => setGenerator((value) => value === 'detail' ? null : 'detail')} title={t('entry.generatePassword')}><Zap size={16}/></button>}
+                                    {field.protected && <button type="button" className="field-action" onClick={() => field.storageKey === 'Password' ? setShowPassword((value) => !value) : setRevealedFields((current) => {
+                                        const next = new Set(current);
+                                        if (next.has(field.storageKey)) next.delete(field.storageKey); else next.add(field.storageKey);
+                                        return next;
+                                    })} title={t(revealed ? 'launcher.hidePassword' : 'launcher.showPassword')}>{revealed ? <EyeOff size={16}/> : <Eye size={16}/>}</button>}
+                                    {field.type === 'url' && <button type="button" className="field-action" onClick={() => openEntryWebsite({...selected, url: currentValue})} disabled={!currentValue} title={t('entry.openWebsite')}><Globe2 size={16}/></button>}
+                                    <button type="button" className="field-action" onClick={() => copyValue(label, currentValue, isDraftSelected ? undefined : selected)} disabled={!currentValue} title={t('template.copyField', {name: label})}><Copy size={16}/></button>
                                 </div>
-                                {generator === 'detail' && (
-                                    <PasswordGenerator onClose={() => setGenerator(null)} onUse={(password) => { setDraftPassword(password); setEditing(true); setShowPassword(true); setGenerator(null); }} />
+                                {field.storageKey === 'Password' && generator === 'detail' && (
+                                    <PasswordGenerator onClose={() => setGenerator(null)} onUse={(password) => { beginItemEditing(); setDraftPassword(password); setShowPassword(true); setGenerator(null); }}/>
                                 )}
-                            </div>}
-                        />
-                        <div className="strength-row" data-level={detailPasswordStrength.level}>
+                            </div>;
+                            return <Field
+                                key={field.id}
+                                label={label}
+                                name={`field:${field.storageKey}`}
+                                value={displayValue}
+                                originalValue={storedValue}
+                                inputValue={field.storageKey === 'Password' ? draftPassword : undefined}
+                                onInputChange={field.storageKey === 'Password' ? setDraftPassword : undefined}
+                                inputType={field.type === 'password' && !revealed ? 'password' : field.type === 'textarea' ? 'text' : field.type}
+                                multiline={field.type === 'textarea'}
+                                required={field.required}
+                                editing={isEditingSelected}
+                                strong={field.protected}
+                                link={field.type === 'url' && Boolean(currentValue)}
+                                action={fieldActions}
+                            />;
+                        })}
+                        {sectionFields.some((field) => field.storageKey === 'Password') && <div className="strength-row" data-level={detailPasswordStrength.level}>
                             <span>{t('entry.passwordStrength')}</span>
-                            <div className="strength-bars" role="meter" aria-label={t('entry.passwordStrength')} aria-valuemin={0} aria-valuemax={4} aria-valuenow={detailPasswordStrength.level}>
-                                {[0, 1, 2, 3].map((level) => <i key={level} className={level < detailPasswordStrength.level ? 'active' : ''} />)}
-                            </div>
+                            <div className="strength-bars" role="meter" aria-label={t('entry.passwordStrength')} aria-valuemin={0} aria-valuemax={4} aria-valuenow={detailPasswordStrength.level}>{[0, 1, 2, 3].map((level) => <i key={level} className={level < detailPasswordStrength.level ? 'active' : ''}/>)}</div>
                             <strong>{t(passwordStrengthMessageKey(detailPasswordStrength.level))}</strong>
-                        </div>
-                    </div>
+                        </div>}
+                    </div>)}
 
-                    <div className="detail-section">
-                        <h3>{t('entry.website')}</h3>
-                        <Field label={t('entry.url')} name="url" value={selected.url || t('common.notSet')} originalValue={selected.url} editing={isEditingSelected} link={Boolean(selected.url)} action={<button type="button" className="field-action" onClick={() => openEntryWebsite(selected)} disabled={!selected.url} title={t('entry.openWebsite')}><Globe2 size={16} /></button>} />
-                    </div>
-
-                    <div className="detail-section notes-section">
-                        <h3>{t('entry.notes')}</h3>
-                        {isEditingSelected ? <textarea name="note" defaultValue={selected.note} /> : <p>{selected.note || t('entry.noNotes')}</p>}
-                    </div>
+                    {selectedTemplateSections.extraFields.length > 0 && <div className="detail-section">
+                        <h3>{t('template.otherFields')}</h3>
+                        {selectedTemplateSections.extraFields.map((field) => <Field key={field.key} label={field.key} name={`extra:${field.key}`} value={field.protected && !revealedFields.has(field.key) ? '••••••••••••' : field.value || t('common.notSet')} originalValue={field.value} inputType={field.protected && !revealedFields.has(field.key) ? 'password' : 'text'} editing={isEditingSelected} strong={field.protected} action={<div className="field-actions">{field.protected && <button type="button" className="field-action" onClick={() => setRevealedFields((current) => { const next = new Set(current); if (next.has(field.key)) next.delete(field.key); else next.add(field.key); return next; })} title={t(revealedFields.has(field.key) ? 'launcher.hidePassword' : 'launcher.showPassword')}>{revealedFields.has(field.key) ? <EyeOff size={16}/> : <Eye size={16}/>}</button>}<button type="button" className="field-action" onClick={() => copyValue(field.key, field.value, isDraftSelected ? undefined : selected)}><Copy size={16}/></button></div>}/>) }
+                    </div>}
 
                     <div className="detail-section tags-section">
                         <h3>{t('entry.tags')}</h3>
@@ -1473,7 +1759,7 @@ function App() {
                     {isEditingSelected && <div className="edit-actions"><button type="button" className="secondary-button" onClick={cancelItemEditing}>{t('common.cancel')}</button><button type="submit" className="primary-button"><Check size={16} /> {t('common.saveChanges')}</button></div>}
                 </form> : filter === 'trash'
                     ? <div className="empty-detail"><Trash2 size={30} /><strong>{t('entry.trashEmpty')}</strong><span>{t('entry.noOldRecords')}</span></div>
-                    : <div className="empty-detail"><ShieldCheck size={30} /><strong>{t('entry.vaultEmpty')}</strong><span>{t('entry.createFirst')}</span><button className="primary-button" onClick={() => void createItem()} disabled={entryActionPending}><Plus size={16} /> {t('entry.new')}</button></div>}
+                    : <div className="empty-detail"><ShieldCheck size={30} /><strong>{t('entry.vaultEmpty')}</strong><span>{t('entry.createFirst')}</span><button className="primary-button" onClick={() => setTemplatePickerOpen(true)} disabled={entryActionPending}><Plus size={16} /> {t('entry.new')}</button></div>}
             </section>
             </>}
 
@@ -1499,10 +1785,7 @@ function App() {
                             </nav>
                             <section className="history-preview">
                                 <div className="history-preview-title"><span className="site-icon" style={{background: historyVersion.color, color: '#fff'}}>{historyVersion.initials}</span><div><h3>{historyVersion.name}</h3><time dateTime={historyVersion.modifiedAt}>{formatDetailTime(historyVersion.modifiedAt, locale, t('common.unknown'))}</time></div></div>
-                                <Field label={t('entry.username')} name="historyUsername" value={historyVersion.username || t('common.notSet')} editing={false} action={<button type="button" className="field-action" onClick={() => copyValue(t('entry.username'), historyVersion.username)} disabled={!historyVersion.username} title={t('entry.copyUsername')}><Copy size={16} /></button>} />
-                                <Field label={t('entry.password')} name="historyPassword" value={showHistoryPassword ? historyVersion.password || t('common.notSet') : '••••••••••••'} editing={false} strong action={<div className="field-actions"><button type="button" className="field-action" onClick={() => setShowHistoryPassword((value) => !value)} title={t(showHistoryPassword ? 'launcher.hidePassword' : 'launcher.showPassword')}>{showHistoryPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button><button type="button" className="field-action" onClick={() => copyValue(t('entry.password'), historyVersion.password)} disabled={!historyVersion.password} title={t('entry.copyPassword')}><Copy size={16} /></button></div>} />
-                                <Field label={t('entry.url')} name="historyUrl" value={historyVersion.url || t('common.notSet')} editing={false} link={Boolean(historyVersion.url)} action={null} />
-                                <div className="history-notes"><span>{t('entry.notes')}</span><p>{historyVersion.note || t('entry.noNotes')}</p></div>
+                                {historyDisplayFields.map((field) => <Field key={field.key} label={field.label} name={`history:${field.key}`} value={field.protected && !showHistoryPassword && field.value ? '••••••••••••' : field.value || t('common.notSet')} editing={false} strong={field.protected} action={<div className="field-actions">{field.protected && <button type="button" className="field-action" onClick={() => setShowHistoryPassword((value) => !value)} title={t(showHistoryPassword ? 'launcher.hidePassword' : 'launcher.showPassword')}>{showHistoryPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button>}<button type="button" className="field-action" onClick={() => copyValue(field.label, field.value)} disabled={!field.value} title={t('template.copyField', {name: field.label})}><Copy size={16}/></button></div>}/>) }
                                 {historyVersion.tags.length > 0 && <div className="tag-list history-tags">{historyVersion.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
                             </section>
                         </div>}
@@ -1603,6 +1886,21 @@ function App() {
                 </div>
             )}
 
+            {deleteTemplateTarget && (
+                <div className="modal-backdrop" onMouseDown={() => !deletingTemplate && setDeleteTemplateTarget(null)}>
+                    <div className="create-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-template-title" onMouseDown={(event) => event.stopPropagation()}>
+                        <header>
+                            <div><h2 id="delete-template-title">{t('template.delete')}</h2><p>{t('template.deleteConfirm', {name: templateName(deleteTemplateTarget)})}</p></div>
+                            <button type="button" className="icon-button" onClick={() => setDeleteTemplateTarget(null)} disabled={deletingTemplate} title={t('common.close')}><X size={18}/></button>
+                        </header>
+                        <footer>
+                            <button type="button" className="secondary-button" onClick={() => setDeleteTemplateTarget(null)} disabled={deletingTemplate}>{t('common.cancel')}</button>
+                            <button type="button" className="danger-button" onClick={() => void deleteTemplate()} disabled={deletingTemplate}><Trash2 size={15}/> {t(deletingTemplate ? 'common.deleting' : 'template.delete')}</button>
+                        </footer>
+                    </div>
+                </div>
+            )}
+
             {clearTrashOpen && (
                 <div className="modal-backdrop" onMouseDown={() => !clearingTrash && setClearTrashOpen(false)}>
                     <div className="create-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="clear-trash-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -1645,22 +1943,26 @@ type FieldProps = {
     originalValue?: string;
     inputValue?: string;
     onInputChange?: (value: string) => void;
-    inputType?: 'text' | 'password';
+    inputType?: 'text' | 'password' | 'url' | 'date' | 'month';
     editing: boolean;
     action: React.ReactNode;
     strong?: boolean;
     link?: boolean;
+    multiline?: boolean;
+    required?: boolean;
 };
 
-function Field({ label, name, value, originalValue, inputValue, onInputChange, inputType = 'text', editing, action, strong, link }: FieldProps) {
+function Field({ label, name, value, originalValue, inputValue, onInputChange, inputType = 'text', editing, action, strong, link, multiline, required }: FieldProps) {
     return (
         <div className="detail-field">
             <label>{label}</label>
             <div className="field-value">
                 {editing
-                    ? inputValue !== undefined
-                        ? <input name={name} type={inputType} value={inputValue} onChange={(event) => onInputChange?.(event.target.value)} />
-                        : <input name={name} type={inputType} defaultValue={originalValue ?? value} />
+                    ? multiline
+                        ? <textarea name={name} defaultValue={originalValue ?? value} required={required}/>
+                        : inputValue !== undefined
+                            ? <input name={name} type={inputType} value={inputValue} onChange={(event) => onInputChange?.(event.target.value)} required={required}/>
+                            : <input name={name} type={inputType} defaultValue={originalValue ?? value} required={required}/>
                     : <span className={`${strong ? 'password-value' : ''} ${link ? 'link-value' : ''}`}>{value}</span>}
                 {action}
             </div>

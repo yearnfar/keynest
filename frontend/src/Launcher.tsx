@@ -22,6 +22,7 @@ import {
     UnlockDatabase,
 } from '../wailsjs/go/main/App';
 import {useI18n} from './i18n';
+import type {EntryField, EntryTemplate} from './entryTemplates';
 
 type VaultSnapshotEntry = {
     id: string;
@@ -42,6 +43,9 @@ type VaultSnapshotEntry = {
     initials: string;
     tags: string[];
     historyCount?: number;
+    templateId?: string;
+    templateVersion?: number;
+    fields?: EntryField[];
 };
 
 export type VaultSnapshot = {
@@ -55,6 +59,7 @@ export type VaultSnapshot = {
         depth: number;
         iconId: number;
     }>;
+    templates?: EntryTemplate[];
 };
 
 type RecentDatabase = { name: string; path: string; modified: string };

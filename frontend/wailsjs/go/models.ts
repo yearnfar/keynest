@@ -32,6 +32,22 @@ export namespace main {
 	        this.modified = source["modified"];
 	    }
 	}
+	export class VaultEntryField {
+	    key: string;
+	    value: string;
+	    protected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new VaultEntryField(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.protected = source["protected"];
+	    }
+	}
 	export class SaveEntryRequest {
 	    id: string;
 	    name: string;
@@ -44,6 +60,9 @@ export namespace main {
 	    category: string;
 	    favorite: boolean;
 	    tags: string[];
+	    templateId: string;
+	    templateVersion: number;
+	    fields: VaultEntryField[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SaveEntryRequest(source);
@@ -62,7 +81,28 @@ export namespace main {
 	        this.category = source["category"];
 	        this.favorite = source["favorite"];
 	        this.tags = source["tags"];
+	        this.templateId = source["templateId"];
+	        this.templateVersion = source["templateVersion"];
+	        this.fields = this.convertValues(source["fields"], VaultEntryField);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class VaultEntry {
 	    id: string;
@@ -85,6 +125,9 @@ export namespace main {
 	    trashed: boolean;
 	    deletedAt?: string;
 	    historyCount: number;
+	    templateId: string;
+	    templateVersion: number;
+	    fields: VaultEntryField[];
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultEntry(source);
@@ -112,7 +155,28 @@ export namespace main {
 	        this.trashed = source["trashed"];
 	        this.deletedAt = source["deletedAt"];
 	        this.historyCount = source["historyCount"];
+	        this.templateId = source["templateId"];
+	        this.templateVersion = source["templateVersion"];
+	        this.fields = this.convertValues(source["fields"], VaultEntryField);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SaveEntryResult {
 	    entry: VaultEntry;
@@ -173,6 +237,75 @@ export namespace main {
 	    }
 	}
 	
+	
+	export class VaultTemplateField {
+	    id: string;
+	    storageKey: string;
+	    label: string;
+	    type: string;
+	    section: string;
+	    required: boolean;
+	    protected: boolean;
+	    searchable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new VaultTemplateField(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.storageKey = source["storageKey"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.section = source["section"];
+	        this.required = source["required"];
+	        this.protected = source["protected"];
+	        this.searchable = source["searchable"];
+	    }
+	}
+	export class VaultEntryTemplate {
+	    id: string;
+	    version: number;
+	    name: string;
+	    builtIn: boolean;
+	    enabled: boolean;
+	    deleted: boolean;
+	    fields: VaultTemplateField[];
+	
+	    static createFrom(source: any = {}) {
+	        return new VaultEntryTemplate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.version = source["version"];
+	        this.name = source["name"];
+	        this.builtIn = source["builtIn"];
+	        this.enabled = source["enabled"];
+	        this.deleted = source["deleted"];
+	        this.fields = this.convertValues(source["fields"], VaultTemplateField);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class VaultGroup {
 	    id: string;
 	    name: string;
@@ -198,6 +331,7 @@ export namespace main {
 	    path: string;
 	    entries: VaultEntry[];
 	    groups: VaultGroup[];
+	    templates: VaultEntryTemplate[];
 	
 	    static createFrom(source: any = {}) {
 	        return new VaultSnapshot(source);
@@ -209,6 +343,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.entries = this.convertValues(source["entries"], VaultEntry);
 	        this.groups = this.convertValues(source["groups"], VaultGroup);
+	        this.templates = this.convertValues(source["templates"], VaultEntryTemplate);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
