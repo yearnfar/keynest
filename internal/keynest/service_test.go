@@ -19,7 +19,34 @@ func newTestService(t *testing.T, path, password string) *Service {
 	if err != nil {
 		t.Fatalf("create database: %v", err)
 	}
+	if err := saveTemplatePreferences(db, templatePreferences{}); err != nil {
+		t.Fatalf("reset template preferences: %v", err)
+	}
+	if err := writeDatabase(db, path); err != nil {
+		t.Fatalf("persist test template preferences: %v", err)
+	}
 	return &Service{db: db, dbPath: path}
+}
+
+func TestNewDatabaseStartsWithoutManagedTemplates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.kdbx")
+	service := NewService()
+	snapshot, err := service.Create(path, CreateRequest{Name: "Empty templates", Password: "master-password"})
+	if err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	if len(snapshot.Templates) != 1 || snapshot.Templates[0].ID != "login" {
+		t.Fatalf("new database templates = %#v, want login only", snapshot.Templates)
+	}
+
+	reopened, err := decodeDatabase(path, "master-password", "")
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	templates := templatesFromDatabase(reopened)
+	if len(templates) != 1 || templates[0].ID != "login" {
+		t.Fatalf("new database templates after reopen = %#v, want login only", templates)
+	}
 }
 
 func TestDatabaseDecodeError(t *testing.T) {

@@ -1606,11 +1606,13 @@ function App() {
                             <button className={`add-button ${templatePickerOpen ? 'active' : ''}`} onClick={() => setTemplatePickerOpen((open) => !open)} disabled={entryActionPending} title={t('entry.new')} aria-haspopup="menu" aria-expanded={templatePickerOpen}><Plus size={18} /></button>
                             {templatePickerOpen && <div className="template-picker" role="menu">
                                 <button type="button" role="menuitem" onClick={() => createItem('login')}><Plus size={17}/><span><strong>{t('entry.new')}</strong><small>{t('template.fieldCount', {count: defaultEntryTemplate.fields.length})}</small></span></button>
-                                <span>{t('template.choose')}</span>
-                                {enabledManagedTemplates.map((template) => {
-                                    const Icon = templateIcons[template.id] ?? FileKey2;
-                                    return <button key={template.id} type="button" role="menuitem" onClick={() => createItem(template.id)}><Icon size={17}/><span><strong>{templateName(template)}</strong><small>{t('template.fieldCount', {count: template.fields.length})}</small></span></button>;
-                                })}
+                                {enabledManagedTemplates.length > 0 && <>
+                                    <span>{t('template.choose')}</span>
+                                    {enabledManagedTemplates.map((template) => {
+                                        const Icon = templateIcons[template.id] ?? FileKey2;
+                                        return <button key={template.id} type="button" role="menuitem" onClick={() => createItem(template.id)}><Icon size={17}/><span><strong>{templateName(template)}</strong><small>{t('template.fieldCount', {count: template.fields.length})}</small></span></button>;
+                                    })}
+                                </>}
                             </div>}
                         </div>}
                 </div>

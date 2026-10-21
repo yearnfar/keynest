@@ -66,6 +66,16 @@ func builtInTemplates() []EntryTemplate {
 	}
 }
 
+func newDatabaseTemplatePreferences() templatePreferences {
+	preferences := templatePreferences{}
+	for _, template := range builtInTemplates() {
+		if template.ID != "login" {
+			preferences.Removed = append(preferences.Removed, template.ID)
+		}
+	}
+	return preferences
+}
+
 func templatesFromDatabase(db *gokeepasslib.Database) []EntryTemplate {
 	all := append(builtInTemplates(), customTemplatesFromDatabase(db)...)
 	preferences := templatePreferencesFromDatabase(db)

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -344,14 +345,7 @@ func (s *Service) DeleteTemplate(id string) ([]EntryTemplate, error) {
 		}
 		preferences.Hidden = hidden
 	} else {
-		alreadyHidden := false
-		for _, hiddenID := range preferences.Hidden {
-			if hiddenID == id {
-				alreadyHidden = true
-				break
-			}
-		}
-		if !alreadyHidden {
+		if !slices.Contains(preferences.Hidden, id) {
 			preferences.Hidden = append(preferences.Hidden, id)
 		}
 	}

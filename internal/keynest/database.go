@@ -85,6 +85,9 @@ func createDatabaseAt(path, name, password, keyFile string) (*gokeepasslib.Datab
 	root := gokeepasslib.NewGroup()
 	root.Name = "个人"
 	db.Content.Root.Groups = []gokeepasslib.Group{root}
+	if err := saveTemplatePreferences(db, newDatabaseTemplatePreferences()); err != nil {
+		return nil, err
+	}
 	if err := db.LockProtectedEntries(); err != nil {
 		return nil, err
 	}
