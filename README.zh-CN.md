@@ -27,6 +27,12 @@
 
 ## 开发
 
+请先安装 Wails v3.1.0：
+
+```bash
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+```
+
 ```bash
 make dev
 ```
@@ -47,12 +53,12 @@ make test
 make release
 ```
 
-macOS 应用构建到 `build/bin/KeyNest.app`。
+macOS 应用构建到 `bin/keynest.app`。
 
 可通过 `BUILD_FLAGS` 传递额外的 Wails 构建参数，例如：
 
 ```bash
-make release BUILD_FLAGS="-platform windows/amd64"
+make release BUILD_FLAGS="GOOS=windows ARCH=amd64"
 ```
 
 ## 版本更新
@@ -67,7 +73,7 @@ macOS 用户应下载 `KeyNest-macOS-arm64.dmg`，打开后将 `KeyNest.app` 拖
 - `keynest-darwin-arm64` 与 `keynest-darwin-arm64.sha256`
 - `keynest-windows-amd64.exe` 与 `keynest-windows-amd64.exe.sha256`
 
-本地 `wails dev` 和普通 `wails build` 属于开发构建，可以检查远程版本，但不会覆盖自身。`make release` 和发布工作流会从当前提交最近的 `vMAJOR.MINOR.PATCH` Git 标签读取版本，去掉 `v` 后写入应用界面、Go 二进制以及 macOS/Windows 包元数据，并通过链接参数写入 `BuildMode=production`，从而启用自动安装。
+本地 `wails3 dev` 和调试构建属于开发构建，可以检查远程版本，但不会覆盖自身。`make release` 和发布工作流会从当前提交最近的 `vMAJOR.MINOR.PATCH` Git 标签读取版本，去掉 `v` 后写入应用界面、Go 二进制以及 macOS/Windows 包元数据，并通过链接参数写入 `BuildMode=production`，从而启用自动安装。
 
 ## 开源许可
 

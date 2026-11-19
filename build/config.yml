@@ -1,0 +1,46 @@
+version: '3'
+
+info:
+  companyName: yearnfar
+  productName: KeyNest
+  productIdentifier: com.wails.keynest
+  description: Local KeePass-compatible password manager
+  copyright: '(c) 2026 yearnfar'
+  comments: KeyNest desktop password manager
+  version: 0.1.0
+
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+      - '*_test.go'
+    watched_extension:
+      - '*.go'
+      - '*.js'
+      - '*.ts'
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task common:dev:frontend
+      type: background
+    - cmd: wails3 task run
+      type: primary
+      exit_policy: shutdown
+
+fileAssociations:
+  - ext: kdbx
+    name: KeePass Database
+    description: KeePass KDBX database
+    iconName: appicon
+    role: Editor

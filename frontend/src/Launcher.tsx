@@ -20,8 +20,9 @@ import {
     CreateDatabase,
     ListRecentDatabases,
     UnlockDatabase,
-} from '../wailsjs/go/main/App';
+} from '../bindings/github.com/yearnfar/keynest/app';
 import {useI18n} from './i18n';
+import {hasWailsBridge} from './wails';
 
 type VaultSnapshotEntry = {
     id: string;
@@ -63,8 +64,6 @@ type LauncherProps = {
     onUnlock: (snapshot: VaultSnapshot) => void;
     onDemo: () => void;
 };
-
-const hasWailsBridge = () => Boolean((window as Window & { go?: unknown }).go);
 
 function Launcher({ onUnlock, onDemo }: LauncherProps) {
     const {t} = useI18n();

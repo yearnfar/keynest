@@ -40,7 +40,7 @@ jobs:
       - name: Install Wails
         shell: bash
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
           echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
 
       - name: Install frontend dependencies
@@ -49,14 +49,16 @@ jobs:
 
       - name: Build release binary
         shell: bash
-        run: node scripts/build-release.mjs -clean -platform "${{ matrix.platform }}"
+        run: |
+          TARGET_OS="${{ matrix.platform }}"
+          node scripts/build-release.mjs "GOOS=${TARGET_OS%/*}" "ARCH=${TARGET_OS#*/}"
 
       - name: Prepare release assets
         shell: bash
         run: |
           mkdir -p release-assets
           if [[ "${{ matrix.platform }}" == darwin/* ]]; then
-            APP_BUNDLE="$(find build/bin -maxdepth 1 -type d -name '*.app' | head -n 1)"
+            APP_BUNDLE="$(find bin -maxdepth 1 -type d -name '*.app' | head -n 1)"
             test -n "${APP_BUNDLE}" && test -d "${APP_BUNDLE}"
 
             BINARY="$(find "${APP_BUNDLE}/Contents/MacOS" -type f | head -n 1)"
@@ -71,7 +73,7 @@ jobs:
               -format UDZO \
               "release-assets/KeyNest-macOS-arm64.dmg"
           else
-            BINARY="build/bin/keynest.exe"
+            BINARY="bin/keynest.exe"
           fi
           test -n "${BINARY}" && test -f "${BINARY}"
           cp "${BINARY}" "release-assets/${{ matrix.asset }}"

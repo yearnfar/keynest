@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/yearnfar/keynest/internal/keynest"
 	"github.com/yearnfar/keynest/internal/updater"
 )
@@ -100,28 +100,30 @@ func NewApp() *App {
 	return &App{vault: keynest.NewService(), updates: updater.NewService()}
 }
 
-func (a *App) startup(ctx context.Context) {
+func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	a.ctx = ctx
+	return nil
+}
+
+func (a *App) context() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
 }
 
 func (a *App) ChooseDatabase() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "打开 KeePass 数据库",
-		Filters: []runtime.FileFilter{{
-			DisplayName: "KeePass 数据库 (*.kdbx)",
-			Pattern:     "*.kdbx",
-		}},
-	})
+	return application.Get().Dialog.OpenFile().
+		SetTitle("打开 KeePass 数据库").
+		AddFilter("KeePass 数据库 (*.kdbx)", "*.kdbx").
+		PromptForSingleSelection()
 }
 
 func (a *App) ChooseKeyFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择密钥文件",
-		Filters: []runtime.FileFilter{{
-			DisplayName: "KeePass 密钥文件",
-			Pattern:     "*.key;*.keyx;*.xml;*",
-		}},
-	})
+	return application.Get().Dialog.OpenFile().
+		SetTitle("选择密钥文件").
+		AddFilter("KeePass 密钥文件", "*.key;*.keyx;*.xml;*").
+		PromptForSingleSelection()
 }
 
 func (a *App) ListRecentDatabases() []RecentDatabase {
@@ -148,14 +150,12 @@ func (a *App) CreateDatabase(request CreateDatabaseRequest) (VaultSnapshot, erro
 	if err := keynest.ValidateCreateRequest(createRequest); err != nil {
 		return VaultSnapshot{}, err
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "新建 KeePass 数据库",
-		DefaultFilename: keynest.SafeFilename(request.Name) + ".kdbx",
-		Filters: []runtime.FileFilter{{
-			DisplayName: "KeePass 数据库 (*.kdbx)",
-			Pattern:     "*.kdbx",
-		}},
+	dialog := application.Get().Dialog.SaveFile()
+	dialog.SetOptions(&application.SaveFileDialogOptions{
+		Title:    "新建 KeePass 数据库",
+		Filename: keynest.SafeFilename(request.Name) + ".kdbx",
 	})
+	path, err := dialog.AddFilter("KeePass 数据库 (*.kdbx)", "*.kdbx").PromptForSingleSelection()
 	if err != nil || path == "" {
 		return VaultSnapshot{}, err
 	}
@@ -271,12 +271,12 @@ func (a *App) CurrentUpdateInfo() UpdateInfo {
 }
 
 func (a *App) CheckForUpdates() (UpdateInfo, error) {
-	info, err := a.updates.Check(a.ctx)
+	info, err := a.updates.Check(a.context())
 	return toUpdateInfo(info), err
 }
 
 func (a *App) InstallUpdate() (UpdateInfo, error) {
-	info, err := a.updates.Install(a.ctx)
+	info, err := a.updates.Install(a.context())
 	return toUpdateInfo(info), err
 }
 
@@ -284,7 +284,7 @@ func (a *App) RestartApplication() error {
 	if err := a.updates.Restart(); err != nil {
 		return err
 	}
-	runtime.Quit(a.ctx)
+	application.Get().Quit()
 	return nil
 }
 

@@ -27,6 +27,12 @@ Free cross-platform password manager compatible with KeePass.
 
 ## Development
 
+Install Wails v3.1.0 first:
+
+```bash
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+```
+
 ```bash
 make dev
 ```
@@ -47,12 +53,12 @@ make test
 make release
 ```
 
-The macOS application is built at `build/bin/KeyNest.app`.
+The macOS application is built at `bin/keynest.app`.
 
 Additional Wails build arguments can be passed through `BUILD_FLAGS`, for example:
 
 ```bash
-make release BUILD_FLAGS="-platform windows/amd64"
+make release BUILD_FLAGS="GOOS=windows ARCH=amd64"
 ```
 
 ## Updates
@@ -67,7 +73,7 @@ Releases use `vMAJOR.MINOR.PATCH` tags. After a tag is pushed, `.github/workflow
 - `keynest-darwin-arm64` and `keynest-darwin-arm64.sha256`
 - `keynest-windows-amd64.exe` and `keynest-windows-amd64.exe.sha256`
 
-Local `wails dev` and standard `wails build` runs are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.
+Local `wails3 dev` and debug builds are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.
 
 ## License
 

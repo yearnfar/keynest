@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=KeyNest
+Comment=Local KeePass-compatible password manager
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/keynest %u
+Terminal=false
+Type=Application
+Icon=keynest
+Categories=Utility;
+StartupWMClass=keynest
+
+ 

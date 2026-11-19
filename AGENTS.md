@@ -6,7 +6,7 @@ This file is the working guide for AI coding agents in this repository. Read it 
 
 Keynest is a local desktop password manager compatible with KeePass KDBX 4.1 files. It uses:
 
-- Go 1.25 and Wails v2 for the desktop shell and backend API.
+- Go 1.26 and Wails v3 for the desktop shell and backend API.
 - React 19, TypeScript, and Vite for the UI.
 - `gokeepasslib/v3` for KDBX parsing and encryption.
 - `lucide-react` for interface icons.
@@ -31,15 +31,15 @@ Vault files stay at paths chosen by the user. The app does not have a cloud back
 - `frontend/src/PasswordGenerator.tsx`: password generation using Web Crypto.
 - `frontend/src/KeePassGroupIcon.tsx`: KeePass group icon mapping.
 - `frontend/src/App.css` and `frontend/src/style.css`: application styling.
-- `frontend/wailsjs/`: generated Wails bindings. Do not edit these files by hand.
-- `frontend/dist/` and `build/bin/`: generated build output; both are ignored by Git.
+- `frontend/bindings/`: generated Wails bindings. Do not edit these files by hand.
+- `frontend/dist/` and `bin/`: generated build output; both are ignored by Git.
 - `build/`: Wails platform metadata and application icons.
 
 ## Runtime Flow
 
 The main data path is:
 
-1. React calls a generated function from `frontend/wailsjs/go/main/App`.
+1. React calls a generated function from `frontend/bindings/github.com/yearnfar/keynest/app`.
 2. A public method in `app.go` validates UI-specific input or opens a native dialog.
 3. The method delegates to `internal/keynest.Service`.
 4. The service holds its mutex, mutates the in-memory KDBX database, and persists it.
@@ -69,7 +69,7 @@ The exported methods and DTOs in `app.go` define the frontend/backend contract. 
 
 1. Update the Go bridge and the vault package types/mapping together.
 2. Update frontend types and call sites.
-3. Regenerate `frontend/wailsjs/` through the normal Wails development or build workflow. Do not patch generated bindings manually.
+3. Regenerate `frontend/bindings/` through the normal Wails development or build workflow. Do not patch generated bindings manually.
 4. Verify both Go tests and the TypeScript production build.
 
 The browser preview has no Wails bridge. Preserve the `hasWailsBridge()` checks and demo behavior so `npm run dev` remains useful.
@@ -79,7 +79,7 @@ The browser preview has no Wails bridge. Preserve the `hasWailsBridge()` checks 
 Run the desktop app with hot reload:
 
 ```bash
-wails dev
+wails3 dev
 ```
 
 Run only the browser frontend:
@@ -100,7 +100,7 @@ cd frontend && npm run build
 For desktop integration or release-facing changes, also run:
 
 ```bash
-wails build
+wails3 build
 ```
 
 There is currently no frontend test script. Do not claim frontend tests passed when only `npm run build` was run.
@@ -120,9 +120,9 @@ There is currently no frontend test script. Do not claim frontend tests passed w
 
 - Vault logic: add focused cases in `internal/keynest/service_test.go`, then run `go test ./...`.
 - Bridge/API shape: run `go test ./...`, regenerate Wails bindings, then run the frontend build.
-- Frontend behavior or styling: run `cd frontend && npm run build`; use `wails dev` when the workflow depends on native APIs.
+- Frontend behavior or styling: run `cd frontend && npm run build`; use `wails3 dev` when the workflow depends on native APIs.
 - Password generation: verify every enabled character class is represented, length is exact, the all-disabled guard remains valid, and randomness still comes from Web Crypto.
-- Packaging or platform metadata: run `wails build` on the affected platform.
+- Packaging or platform metadata: run `wails3 build` on the affected platform.
 - Updater behavior: run `go test ./internal/updater`; release assets must keep the names documented in `README.md` and `.github/workflows/release.yml`.
 
 ## Definition Of Done

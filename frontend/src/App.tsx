@@ -32,12 +32,12 @@ import {
 } from 'lucide-react';
 import './App.css';
 import Launcher, { VaultSnapshot } from './Launcher';
-import { ChangePassword, CreateGroup, DeleteGroup, DeleteRecycleBinEntry, EmptyRecycleBin, GetEntryHistory, LockDatabase, MoveEntryToRecycleBin, MoveGroup, RestoreRecycleBinEntry, SaveEntry, TouchEntry, UpdateGroup } from '../wailsjs/go/main/App';
-import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+import { ChangePassword, CreateGroup, DeleteGroup, DeleteRecycleBinEntry, EmptyRecycleBin, GetEntryHistory, LockDatabase, MoveEntryToRecycleBin, MoveGroup, RestoreRecycleBinEntry, SaveEntry, TouchEntry, UpdateGroup } from '../bindings/github.com/yearnfar/keynest/app';
 import PasswordGenerator, { calculatePasswordStrength, generateDefaultPassword, passwordStrengthMessageKey } from './PasswordGenerator';
 import UpdateSettings from './UpdateSettings';
 import { DEFAULT_GROUP_ICON_ID, KeePassGroupIcon, keepassGroupIcons } from './KeePassGroupIcon';
 import {localizedGroupIconLabel, useI18n, type MessageKey} from './i18n';
+import {hasWailsBridge, openExternalURL} from './wails';
 
 type VaultItem = {
     id: string;
@@ -429,7 +429,7 @@ function App() {
     const markEntryUsed = async (item: VaultItem) => {
         if (item.trashed || item.id === draftEntryID) return;
         try {
-            const touched = demoMode || !(window as Window & { go?: unknown }).go
+            const touched = demoMode || !hasWailsBridge()
                 ? { ...item, lastUsedAt: new Date().toISOString() }
                 : await TouchEntry(item.id) as VaultItem;
             setItems((current) => current.map((candidate) => candidate.id === item.id ? touched : candidate));
@@ -462,8 +462,7 @@ function App() {
 
     const openEntryWebsite = (item: VaultItem) => {
         if (!item.url || item.trashed) return;
-        if ((window as Window & { runtime?: unknown }).runtime) BrowserOpenURL(item.url);
-        else window.open(item.url, '_blank', 'noopener,noreferrer');
+        void openExternalURL(item.url);
         void markEntryUsed(item);
     };
 
@@ -490,7 +489,7 @@ function App() {
     const openDemo = () => openSnapshot({ name: `KeyNest ${t('launcher.demo')}`, path: 'demo.kdbx', entries: seedItems, groups: seedGroups }, true);
 
     const persistEntry = async (item: VaultItem): Promise<SaveResult> => {
-        if (demoMode || !(window as Window & { go?: unknown }).go) {
+        if (demoMode || !hasWailsBridge()) {
             if (item.id.startsWith('new-')) {
                 return { entry: { ...item, id: item.id.replace(/^new-/, 'demo-'), historyCount: 0 } };
             }
@@ -536,7 +535,7 @@ function App() {
         setHistoryError('');
         setHistoryLoading(true);
         try {
-            const history = demoMode || !(window as Window & { go?: unknown }).go
+            const history = demoMode || !hasWailsBridge()
                 ? demoHistories[entryID] ?? []
                 : await GetEntryHistory(entryID) as VaultItem[];
             if (historyRequestRef.current !== requestID) return;
@@ -600,7 +599,7 @@ function App() {
         if (!group || (parentID && (!parent || descendantGroupIds(groups, group.id).has(parentID))) || groupActionPending) return;
         setGroupActionPending(true);
         try {
-            if (demoMode || !(window as Window & { go?: unknown }).go) {
+            if (demoMode || !hasWailsBridge()) {
                 setGroups((current) => {
                     const moved = current.find((candidate) => candidate.id === group.id);
                     if (!moved) return current;
@@ -740,7 +739,7 @@ function App() {
             let selectedGroupID: string;
             if (editingGroup) {
                 selectedGroupID = editingGroup.id;
-                if (demoMode || !(window as Window & { go?: unknown }).go) {
+                if (demoMode || !hasWailsBridge()) {
                     setGroups((current) => current.map((group) => group.id === editingGroup.id
                         ? { ...group, name, iconId: groupIconID }
                         : group));
@@ -751,7 +750,7 @@ function App() {
                     setItems(snapshot.entries as VaultItem[]);
                 }
             } else {
-                const created = demoMode || !(window as Window & { go?: unknown }).go
+                const created = demoMode || !hasWailsBridge()
                     ? { id: `demo-group-${Date.now()}`, name, parentId: parentId || undefined, depth: parent ? parent.depth + 1 : 0, iconId: groupIconID }
                     : await CreateGroup(name, parentId, groupIconID) as VaultGroup;
                 setGroups((current) => insertGroup(current, created));
@@ -809,7 +808,7 @@ function App() {
         const deletedIDs = descendantGroupIds(groups, deleteGroupTarget.id);
         try {
             let nextItems: VaultItem[];
-            if (demoMode || !(window as Window & { go?: unknown }).go) {
+            if (demoMode || !hasWailsBridge()) {
                 nextItems = items.map((item) => deletedIDs.has(item.groupId) && !item.trashed
                     ? { ...item, groupId: '', folder: '', modified: '刚刚', modifiedAt: new Date().toISOString() }
                     : item);
@@ -833,7 +832,7 @@ function App() {
 
     const lockVault = async () => {
         cancelItemEditing();
-        if (!demoMode && (window as Window & { go?: unknown }).go) await LockDatabase();
+        if (!demoMode && hasWailsBridge()) await LockDatabase();
         setVaultOpen(false);
         setShowPassword(false);
         setEditing(false);
@@ -933,7 +932,7 @@ function App() {
         }
         setChangingPassword(true);
         try {
-            if (!demoMode && (window as Window & { go?: unknown }).go) {
+            if (!demoMode && hasWailsBridge()) {
                 await ChangePassword(currentPassword, newMasterPassword);
             }
             setChangePasswordOpen(false);
@@ -949,7 +948,7 @@ function App() {
     const clearRecycleBin = async () => {
         setClearingTrash(true);
         try {
-            if (!demoMode && (window as Window & { go?: unknown }).go) {
+            if (!demoMode && hasWailsBridge()) {
                 await EmptyRecycleBin();
             }
             setItems((current) => current.filter((item) => !item.trashed));
@@ -970,7 +969,7 @@ function App() {
         setEntryActionPending(true);
         try {
             const restoreGroup = groups.find((group) => group.id === selected.groupId);
-            const restored = !demoMode && (window as Window & { go?: unknown }).go
+            const restored = !demoMode && hasWailsBridge()
                 ? await RestoreRecycleBinEntry(selected.id) as VaultItem
                 : { ...selected, groupId: restoreGroup?.id ?? '', folder: restoreGroup?.name ?? '', lastUsedAt: new Date().toISOString(), trashed: false, deletedAt: undefined };
             setItems((current) => current.map((item) => item.id === selected.id ? restored : item));
@@ -988,7 +987,7 @@ function App() {
         if (!deleteTarget) return;
         setEntryActionPending(true);
         try {
-            if (!demoMode && (window as Window & { go?: unknown }).go) {
+            if (!demoMode && hasWailsBridge()) {
                 await DeleteRecycleBinEntry(deleteTarget.id);
             }
             setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
@@ -1040,7 +1039,7 @@ function App() {
         setEntryActionPending(true);
         setMoreMenuOpen(false);
         try {
-            const recycled = !demoMode && (window as Window & { go?: unknown }).go
+            const recycled = !demoMode && hasWailsBridge()
                 ? await MoveEntryToRecycleBin(selected.id) as VaultItem
                 : {
                     ...selected,

@@ -1,8 +1,8 @@
 import {useEffect, useState} from 'react';
 import {CheckCircle2, Code2, Download, ExternalLink, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert} from 'lucide-react';
-import {CheckForUpdates, CurrentUpdateInfo, InstallUpdate, RestartApplication} from '../wailsjs/go/main/App';
-import {BrowserOpenURL} from '../wailsjs/runtime/runtime';
+import {CheckForUpdates, CurrentUpdateInfo, InstallUpdate, RestartApplication} from '../bindings/github.com/yearnfar/keynest/app';
 import {useI18n} from './i18n';
+import {hasWailsBridge, openExternalURL} from './wails';
 
 type UpdateInfo = {
     currentVersion: string;
@@ -18,7 +18,6 @@ type UpdateInfo = {
 
 type UpdatePhase = 'idle' | 'checking' | 'available' | 'current' | 'installing' | 'ready' | 'error';
 
-const hasWailsBridge = () => Boolean((window as Window & {go?: unknown}).go);
 const buildVersion = import.meta.env.VITE_APP_VERSION || '0.1.0';
 
 const versionLabel = (version: string, unknown: string) => {
@@ -82,8 +81,7 @@ function UpdateSettings() {
     };
 
     const openUrl = (url: string) => {
-        if (hasWailsBridge()) void BrowserOpenURL(url);
-        else window.open(url, '_blank', 'noopener,noreferrer');
+        void openExternalURL(url);
     };
 
     const busy = phase === 'checking' || phase === 'installing';

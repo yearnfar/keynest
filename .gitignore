@@ -1,4 +1,7 @@
 build/bin
+bin
+.task
+.wails
 node_modules
 frontend/dist
 graphify-out
