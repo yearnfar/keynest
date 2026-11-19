@@ -4,7 +4,9 @@ WAILS ?= wails3
 GO ?= go
 DEV_FLAGS ?=
 BUILD_FLAGS ?=
+UPDATER_PACKAGE := github.com/yearnfar/keynest/internal/updater
 DEV_VERSION := $(shell git rev-parse --short=8 HEAD 2>/dev/null || printf unknown)
+DEV_LDFLAGS := -X $(UPDATER_PACKAGE).Version=$(DEV_VERSION) -X $(UPDATER_PACKAGE).BuildMode=development
 
 .DEFAULT_GOAL := help
 
@@ -24,13 +26,13 @@ check-wails:
 	@command -v $(WAILS) >/dev/null 2>&1 || { echo "Wails CLI is required: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0"; exit 1; }
 
 dev: check-wails
-	VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) dev $(DEV_FLAGS)
+	EXTRA_LDFLAGS="$(DEV_LDFLAGS)" VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) dev $(DEV_FLAGS)
 
 debug: check-wails
-	VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) dev -loglevel debug $(DEV_FLAGS)
+	EXTRA_LDFLAGS="$(DEV_LDFLAGS)" VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) dev -loglevel debug $(DEV_FLAGS)
 
 build-debug: check-wails
-	VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) build $(BUILD_FLAGS) DEV=true
+	EXTRA_LDFLAGS="$(DEV_LDFLAGS)" VITE_APP_VERSION=$(DEV_VERSION) $(WAILS) build $(BUILD_FLAGS) DEV=true
 
 release: check-wails
 	WAILS=$(WAILS) node scripts/build-release.mjs $(BUILD_FLAGS)

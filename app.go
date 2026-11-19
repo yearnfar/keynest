@@ -152,8 +152,9 @@ func (a *App) CreateDatabase(request CreateDatabaseRequest) (VaultSnapshot, erro
 	}
 	dialog := application.Get().Dialog.SaveFile()
 	dialog.SetOptions(&application.SaveFileDialogOptions{
-		Title:    "新建 KeePass 数据库",
-		Filename: keynest.SafeFilename(request.Name) + ".kdbx",
+		CanCreateDirectories: true,
+		Title:                "新建 KeePass 数据库",
+		Filename:             keynest.SafeFilename(request.Name) + ".kdbx",
 	})
 	path, err := dialog.AddFilter("KeePass 数据库 (*.kdbx)", "*.kdbx").PromptForSingleSelection()
 	if err != nil || path == "" {
