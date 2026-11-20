@@ -71,7 +71,6 @@ Releases use `vMAJOR.MINOR.PATCH` tags. After a tag is pushed, `.github/workflow
 
 - `KeyNest-macOS-arm64.dmg` and `KeyNest-macOS-arm64.dmg.sha256` (macOS installer)
 - `keynest-darwin-arm64.zip` and `keynest-darwin-arm64.zip.sha256`
-- `keynest-darwin-arm64` and `keynest-darwin-arm64.sha256` (legacy updater transition)
 - `keynest-windows-amd64.exe` and `keynest-windows-amd64.exe.sha256`
 
 Local `wails3 dev` and debug builds are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.

@@ -61,9 +61,6 @@ jobs:
             APP_BUNDLE="$(find bin -maxdepth 1 -type d -name '*.app' | head -n 1)"
             test -n "${APP_BUNDLE}" && test -d "${APP_BUNDLE}"
 
-            BINARY="$(find "${APP_BUNDLE}/Contents/MacOS" -type f | head -n 1)"
-            test -n "${BINARY}" && test -f "${BINARY}"
-
             DMG_ROOT="$(mktemp -d)"
             ditto "${APP_BUNDLE}" "${DMG_ROOT}/KeyNest.app"
             ditto -c -k --norsrc --keepParent \
@@ -76,7 +73,6 @@ jobs:
               -ov \
               -format UDZO \
               "release-assets/KeyNest-macOS-arm64.dmg"
-            cp "${BINARY}" "release-assets/keynest-darwin-arm64"
           else
             cp "bin/keynest.exe" "release-assets/${{ matrix.asset }}"
           fi
