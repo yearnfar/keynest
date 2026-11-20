@@ -17,7 +17,7 @@ jobs:
         include:
           - runner: macos-15
             platform: darwin/arm64
-            asset: keynest-darwin-arm64
+            asset: keynest-darwin-arm64.zip
           - runner: windows-latest
             platform: windows/amd64
             asset: keynest-windows-amd64.exe
@@ -62,9 +62,13 @@ jobs:
             test -n "${APP_BUNDLE}" && test -d "${APP_BUNDLE}"
 
             BINARY="$(find "${APP_BUNDLE}/Contents/MacOS" -type f | head -n 1)"
+            test -n "${BINARY}" && test -f "${BINARY}"
 
             DMG_ROOT="$(mktemp -d)"
             ditto "${APP_BUNDLE}" "${DMG_ROOT}/KeyNest.app"
+            ditto -c -k --norsrc --keepParent \
+              "${DMG_ROOT}/KeyNest.app" \
+              "release-assets/${{ matrix.asset }}"
             ln -s /Applications "${DMG_ROOT}/Applications"
             hdiutil create \
               -volname "KeyNest" \
@@ -72,11 +76,11 @@ jobs:
               -ov \
               -format UDZO \
               "release-assets/KeyNest-macOS-arm64.dmg"
+            cp "${BINARY}" "release-assets/keynest-darwin-arm64"
           else
-            BINARY="bin/keynest.exe"
+            cp "bin/keynest.exe" "release-assets/${{ matrix.asset }}"
           fi
-          test -n "${BINARY}" && test -f "${BINARY}"
-          cp "${BINARY}" "release-assets/${{ matrix.asset }}"
+          test -f "release-assets/${{ matrix.asset }}"
 
           for ASSET_PATH in release-assets/*; do
             ASSET_NAME="$(basename "${ASSET_PATH}")"

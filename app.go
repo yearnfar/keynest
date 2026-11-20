@@ -97,7 +97,7 @@ type UpdateInfo struct {
 }
 
 func NewApp() *App {
-	return &App{vault: keynest.NewService(), updates: updater.NewService()}
+	return &App{vault: keynest.NewService()}
 }
 
 func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -282,11 +282,7 @@ func (a *App) InstallUpdate() (UpdateInfo, error) {
 }
 
 func (a *App) RestartApplication() error {
-	if err := a.updates.Restart(); err != nil {
-		return err
-	}
-	application.Get().Quit()
-	return nil
+	return a.updates.Restart(a.context())
 }
 
 func toVaultSnapshot(snapshot keynest.Snapshot) VaultSnapshot {

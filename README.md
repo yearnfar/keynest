@@ -65,12 +65,13 @@ make release BUILD_FLAGS="GOOS=windows ARCH=amd64"
 
 macOS users should download `KeyNest-macOS-arm64.dmg`, open it, and drag `KeyNest.app` into the Applications folder. The current macOS package supports Apple Silicon.
 
-Production builds check GitHub Releases from **Settings → About & Updates**. Automatic updates accept only the raw executable matching the current platform and verify its SHA-256 file from the same release before replacing the application. Raw executables are update payloads and are not intended for manual installation.
+Production builds use the Wails v3 updater to check GitHub Releases from **Settings → About & Updates**. Automatic updates accept only the exact asset for the current platform and verify its matching SHA-256 file before staging an atomic replacement. On macOS, the update payload contains the complete application bundle.
 
 Releases use `vMAJOR.MINOR.PATCH` tags. After a tag is pushed, `.github/workflows/release.yml` creates a release and uploads:
 
 - `KeyNest-macOS-arm64.dmg` and `KeyNest-macOS-arm64.dmg.sha256` (macOS installer)
-- `keynest-darwin-arm64` and `keynest-darwin-arm64.sha256`
+- `keynest-darwin-arm64.zip` and `keynest-darwin-arm64.zip.sha256`
+- `keynest-darwin-arm64` and `keynest-darwin-arm64.sha256` (legacy updater transition)
 - `keynest-windows-amd64.exe` and `keynest-windows-amd64.exe.sha256`
 
 Local `wails3 dev` and debug builds are development builds. They can check for remote versions but do not replace themselves. `make release` and the release workflow read the nearest `vMAJOR.MINOR.PATCH` Git tag from the current commit, remove the leading `v`, and write the version into the application UI, Go binary, and macOS/Windows package metadata. They also set `BuildMode=production` through linker flags to enable automatic installation.

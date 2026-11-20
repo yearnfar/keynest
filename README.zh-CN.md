@@ -65,12 +65,13 @@ make release BUILD_FLAGS="GOOS=windows ARCH=amd64"
 
 macOS 用户应下载 `KeyNest-macOS-arm64.dmg`，打开后将 `KeyNest.app` 拖入“应用程序”文件夹。当前 macOS 安装包适用于 Apple Silicon。
 
-正式构建会在“设置 → 关于与更新”中检查 GitHub Releases。自动更新仅接受与当前平台匹配的原始可执行文件，并在替换前验证同一 Release 中的 SHA-256 文件。原始可执行文件是自动更新载荷，不用于手动安装。
+正式构建使用 Wails v3 更新器，在“设置 → 关于与更新”中检查 GitHub Releases。自动更新仅接受与当前平台精确匹配的资产，并在暂存及原子替换前验证对应的 SHA-256 文件。macOS 更新载荷包含完整的应用程序包。
 
 发布版本使用 `vMAJOR.MINOR.PATCH` 标签。推送标签后，`.github/workflows/release.yml` 会创建 Release 并上传以下文件：
 
 - `KeyNest-macOS-arm64.dmg` 与 `KeyNest-macOS-arm64.dmg.sha256`（macOS 用户安装包）
-- `keynest-darwin-arm64` 与 `keynest-darwin-arm64.sha256`
+- `keynest-darwin-arm64.zip` 与 `keynest-darwin-arm64.zip.sha256`
+- `keynest-darwin-arm64` 与 `keynest-darwin-arm64.sha256`（旧版更新器过渡载荷）
 - `keynest-windows-amd64.exe` 与 `keynest-windows-amd64.exe.sha256`
 
 本地 `wails3 dev` 和调试构建属于开发构建，可以检查远程版本，但不会覆盖自身。`make release` 和发布工作流会从当前提交最近的 `vMAJOR.MINOR.PATCH` Git 标签读取版本，去掉 `v` 后写入应用界面、Go 二进制以及 macOS/Windows 包元数据，并通过链接参数写入 `BuildMode=production`，从而启用自动安装。

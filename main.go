@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/yearnfar/keynest/internal/updater"
 )
 
 //go:embed all:frontend/dist
@@ -26,6 +27,11 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	updateService, err := updater.NewService(app.Updater)
+	if err != nil {
+		log.Fatal(err)
+	}
+	appService.updates = updateService
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "KeyNest",
